@@ -21,7 +21,7 @@ import com.webank.wedatasphere.dss.appconn.eventchecker.connector.EventDruidFact
 import com.webank.wedatasphere.dss.appconn.eventchecker.adapter.EventCheckAdapter;
 import com.webank.wedatasphere.dss.appconn.eventchecker.entity.EventChecker;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
 
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -42,6 +42,8 @@ public abstract class AbstractEventCheck implements EventCheckAdapter {
     String receiver;
     String sender;
     String receiveToday;
+    String useRunDate;
+    String runDate;
     String userTime;
     String waitTime;
     String query_frequency;
@@ -49,12 +51,10 @@ public abstract class AbstractEventCheck implements EventCheckAdapter {
     String msg;
     String afterSend;
 
-    DataSource getMsgDS(Properties props, Logger log){
+    DataSource getMsgDS(Properties props, Logger log) {
+        msgDS = EventDruidFactory.getMsgInstance(props, log);
         if (msgDS == null) {
-            msgDS = EventDruidFactory.getMsgInstance(props, log);
-            if (msgDS == null) {
-                log.error("Error getting Druid DataSource instance");
-            }
+            log.error("Error getting Druid DataSource instance");
         }
         return msgDS;
     }
@@ -66,6 +66,8 @@ public abstract class AbstractEventCheck implements EventCheckAdapter {
         sender = props.getProperty(EventChecker.SENDER);
         msg = props.getProperty(EventChecker.MSG);
         receiveToday = props.getProperty(EventChecker.TODAY);
+        useRunDate = props.getProperty(EventChecker.USE_RUN_DATE);
+        runDate = props.getProperty("run_date");
         userTime = props.getProperty(EventChecker.USER_TIME);
         waitTime = props.getProperty(EventChecker.WAIT_TIME, "1");
         query_frequency = props.getProperty(EventChecker.QUERY_FREQUENCY, "30000");

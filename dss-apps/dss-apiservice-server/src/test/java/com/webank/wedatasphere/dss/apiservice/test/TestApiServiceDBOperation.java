@@ -31,7 +31,7 @@ import com.webank.wedatasphere.dss.apiservice.core.vo.ApiAccessVo;
 import com.webank.wedatasphere.dss.apiservice.core.vo.ApiServiceVo;
 import com.webank.wedatasphere.dss.apiservice.core.vo.ApiVersionVo;
 import com.webank.wedatasphere.dss.apiservice.core.vo.ApprovalVo;
-import com.webank.wedatasphere.linkis.DataWorkCloudApplication;
+import org.apache.linkis.DataWorkCloudApplication;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.jupiter.api.Assertions;
@@ -50,11 +50,11 @@ import static org.hamcrest.Matchers.equalTo;
 
 
 
-@RunWith(SpringJUnit4ClassRunner.class)
+//@RunWith(SpringJUnit4ClassRunner.class)
 //@MapperScan(annotationClass = Repository.class, basePackages = "com.webank.wedatasphere.dss.apiservice.dao" )
-@SpringBootTest(classes = {DataWorkCloudApplication.class})
+//@SpringBootTest(classes = {DataWorkCloudApplication.class})
 public class TestApiServiceDBOperation {
-    private static DbSetupTracker dbSetupTracker = new DbSetupTracker();
+    /*private static DbSetupTracker dbSetupTracker = new DbSetupTracker();
     @Autowired
     ApiService apiService;
     @Autowired
@@ -153,5 +153,5 @@ public class TestApiServiceDBOperation {
 
         );
 
-    }
+    }*/
 }

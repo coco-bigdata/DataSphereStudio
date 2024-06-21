@@ -19,30 +19,72 @@ package com.webank.wedatasphere.dss.orchestrator.common.entity;
 import java.util.Date;
 import java.util.List;
 
-
+/**
+ * 一个具体的编排实例
+ */
 public class DSSOrchestratorInfo implements DSSOrchestration {
 
     private Long id;
-
+    /**
+     * 编排名
+     */
     private String name;
-
+    /**
+     * 编排具体的实现类型，比如工作流workflow
+     */
     private String type;
-
+    /**
+     * 编排描述
+     */
     private String desc;
-
+    /**
+     * 创建者
+     */
     private String creator;
-
+    /**
+     * 创建时间
+     */
     private Date createTime;
-
+    /**
+     * 用途标签，作为描述信息
+     */
     private String uses;
-
+    /**
+     * 可以支持的实现的appconn节点
+     */
     private String appConnName;
-
+    /**
+     * 所属工程
+     */
     private Long projectId;
-
+    /**
+     * 工作流的唯一id，不同环境里，同一个工作流保持一致，用来判断是否是同一个工作流。
+     */
     private String uuid;
-
+    /**
+     * 实现的二级类型，比如workflow_DAG
+     */
     private String secondaryType;
+    /**
+     * 所属工作空间
+     */
+    private Long workspaceId;
+
+    private String orchestratorMode;
+
+    private String orchestratorWay;
+    /**
+     * 编排的重要程度，调度会考察这个重要程度
+     */
+    private String orchestratorLevel;
+    /**
+     * 更新人
+     */
+    private String updateUser;
+    /**
+     * 更新时间
+     */
+    private Date updateTime;
 
     public DSSOrchestratorInfo() {
 
@@ -185,6 +227,54 @@ public class DSSOrchestratorInfo implements DSSOrchestration {
 
     public void setProjectId(long projectId) {
         this.projectId = projectId;
+    }
+
+    public Long getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(Long workspaceId) {
+        this.workspaceId = workspaceId;
+    }
+
+    public String getOrchestratorMode() {
+        return orchestratorMode;
+    }
+
+    public void setOrchestratorMode(String orchestratorMode) {
+        this.orchestratorMode = orchestratorMode;
+    }
+
+    public String getOrchestratorWay() {
+        return orchestratorWay;
+    }
+
+    public void setOrchestratorWay(String orchestratorWay) {
+        this.orchestratorWay = orchestratorWay;
+    }
+
+    public String getOrchestratorLevel() {
+        return orchestratorLevel;
+    }
+
+    public void setOrchestratorLevel(String orchestratorLevel) {
+        this.orchestratorLevel = orchestratorLevel;
+    }
+
+    public String getUpdateUser() {
+        return updateUser;
+    }
+
+    public void setUpdateUser(String updateUser) {
+        this.updateUser = updateUser;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
     }
 
     @Override

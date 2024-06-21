@@ -16,91 +16,100 @@
 
 package com.webank.wedatasphere.dss.apiservice.core.restful;
 
+import com.webank.wedatasphere.dss.apiservice.core.bo.ApiCommentUpdateRequest;
 import com.webank.wedatasphere.dss.apiservice.core.bo.ApiServiceQuery;
+import com.webank.wedatasphere.dss.apiservice.core.service.ApiService;
+import com.webank.wedatasphere.dss.apiservice.core.service.ApiServiceQueryService;
 import com.webank.wedatasphere.dss.apiservice.core.util.ApiUtils;
 import com.webank.wedatasphere.dss.apiservice.core.util.AssertUtil;
-import com.webank.wedatasphere.dss.apiservice.core.vo.*;
-import com.webank.wedatasphere.dss.apiservice.core.service.ApiServiceQueryService;
-import com.webank.wedatasphere.dss.apiservice.core.service.ApiService;
-import com.webank.wedatasphere.linkis.server.Message;
-import com.webank.wedatasphere.linkis.server.security.SecurityFilter;
+import com.webank.wedatasphere.dss.apiservice.core.vo.ApiServiceVo;
+import com.webank.wedatasphere.dss.apiservice.core.vo.ApiVersionVo;
+import com.webank.wedatasphere.dss.apiservice.core.vo.ApprovalVo;
+import com.webank.wedatasphere.dss.apiservice.core.vo.QueryParamVo;
+import com.webank.wedatasphere.dss.common.auditlog.OperateTypeEnum;
+import com.webank.wedatasphere.dss.common.auditlog.TargetTypeEnum;
+import com.webank.wedatasphere.dss.common.utils.AuditLogUtils;
+import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
+import com.webank.wedatasphere.dss.standard.sso.utils.SSOHelper;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
-import org.codehaus.jackson.JsonNode;
+import org.apache.linkis.server.Message;
+import org.apache.linkis.server.security.SecurityFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.validation.ConstraintViolation;
 import javax.validation.ConstraintViolationException;
 import javax.validation.Validator;
 import javax.validation.groups.Default;
-import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import java.util.*;
+import java.util.Calendar;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-
-@Path("/dss/apiservice")
-@Consumes(MediaType.APPLICATION_JSON)
-@Produces(MediaType.APPLICATION_JSON)
-@Component
+@RequestMapping(path = "/dss/apiservice", produces = {"application/json"})
+@RestController
 public class ApiServiceCoreRestfulApi {
 
     private static final Logger LOG = LoggerFactory.getLogger(ApiServiceCoreRestfulApi.class);
-    
+
     @Autowired
     private ApiService apiService;
-    
+
     @Autowired
     private ApiServiceQueryService apiServiceQueryService;
 
     @Autowired
     private Validator beanValidator;
+    @Autowired
+    private HttpServletRequest httpServletRequest;
 
     private static final Pattern WRITABLE_PATTERN = Pattern.compile("^\\s*(insert|update|delete|drop|alter|create).*", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
-    @POST
-    @Path("/api")
-    public Response insert(ApiServiceVo apiService, @Context HttpServletRequest req) {
+    /**
+     * 新建一个ApiService.
+     * 走scriptis发起的请求用这个接口，
+     */
+    @RequestMapping(value = "/api",method = RequestMethod.POST)
+    public Message insert(@RequestBody ApiServiceVo apiServiceVo) {
         return ApiUtils.doAndResponse(() -> {
 
-            if (apiService.getWorkspaceId() == null){
-                apiService.setWorkspaceId(180L);
+            if (apiServiceVo.getWorkspaceId() == null){
+                apiServiceVo.setWorkspaceId(180L);
             }
 
-            if (StringUtils.isBlank(apiService.getAliasName())) {
+            if (StringUtils.isBlank(apiServiceVo.getAliasName())) {
                 return Message.error("'api service alias name' is missing[缺少中文名]");
             }
 
-            if (StringUtils.isBlank(apiService.getScriptPath())) {
+            if (StringUtils.isBlank(apiServiceVo.getScriptPath())) {
                 return Message.error("'api service script path' is missing[缺少脚本路径]");
             }
-            if (StringUtils.isBlank(apiService.getContent())) {
+            if (StringUtils.isBlank(apiServiceVo.getContent())) {
                     return Message.error("'api service script content' is missing[缺少脚本内容]");
             }
 
-            if (null == apiService.getWorkspaceId()) {
+            if (null == apiServiceVo.getWorkspaceId()) {
                 return Message.error("'api service workspaceId ' is missing[缺少工作空间ID]");
             }
-            if (apiService.getContent().contains(";")) {
-                if(!apiService.getContent().toLowerCase().startsWith("use ")) {
+            if (apiServiceVo.getContent().contains(";")) {
+                if(!apiServiceVo.getContent().toLowerCase().startsWith("use ")) {
                     return Message.error("'api service script content exists semicolon[脚本内容包含分号]");
                 }
             }
 
 //                     check data change script
-            if (WRITABLE_PATTERN.matcher(apiService.getContent()).matches()) {
+            if (WRITABLE_PATTERN.matcher(apiServiceVo.getContent()).matches()) {
                 return Message.error("'api service script content' only supports query[脚本内容只支持查询语句]");
             }
 
-            Map<String, Object> metadata = apiService.getMetadata();
-            if (apiService.getScriptPath().endsWith(".jdbc")) {
+            Map<String, Object> metadata = apiServiceVo.getMetadata();
+            if (apiServiceVo.getScriptPath().endsWith(".jdbc")) {
                 if (MapUtils.isEmpty(metadata)) {
                     return Message.error("'api service metadata' is missing[请选择数据源]");
                 }
@@ -116,13 +125,13 @@ public class ApiServiceCoreRestfulApi {
                 }
             }
 
-            String userName = SecurityFilter.getLoginUsername(req);
-            Set<ConstraintViolation<ApiServiceVo>> result = beanValidator.validate(apiService, Default.class);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
+            Set<ConstraintViolation<ApiServiceVo>> result = beanValidator.validate(apiServiceVo, Default.class);
             if (result.size() > 0) {
                 throw new ConstraintViolationException(result);
             }
 
-            ApprovalVo approvalVo = apiService.getApprovalVo();
+            ApprovalVo approvalVo = apiServiceVo.getApprovalVo();
 
 //            if (StringUtils.isBlank(approvalVo.getApprovalName())) {
 //                return Message.error("'approvalName' is missing[缺少审批单名字]");
@@ -132,49 +141,57 @@ public class ApiServiceCoreRestfulApi {
                 return Message.error("'applyUser' is missing[缺少申请用户名字]");
             }
 
-            apiService.setCreator(userName);
-            apiService.setModifier(userName);
-            this.apiService.save(apiService);
-            return Message.ok().data("insert_id", apiService.getId()).data("approval_no",approvalVo.getApprovalNo());
+            apiServiceVo.setCreator(userName);
+            apiServiceVo.setModifier(userName);
+            Workspace workspace = SSOHelper.getWorkspace(httpServletRequest);
+            this.apiService.save(apiServiceVo);
+            AuditLogUtils.printLog(userName,workspace.getWorkspaceId(), workspace.getWorkspaceName(), TargetTypeEnum.APISERVICE,
+                    apiServiceVo.getId(),apiServiceVo.getName(), OperateTypeEnum.CREATE,apiServiceVo);
+            return Message.ok().data("insert_id", apiServiceVo.getId()).data("approval_no",approvalVo.getApprovalNo());
         }, "/apiservice/api", "Fail to insert service api[新增服务api失败]");
     }
 
-    @POST
-    @Path("/create")
-    public Response create(ApiServiceVo apiService, @Context HttpServletRequest req) {
+    /**
+     * 也是创建apiservice，给数据采集用的。
+     * 因为在bdp中，需要区分运维用户，业务用户，系统用户，所以入参是不一样的。
+     * @param apiServiceVo
+     * @return
+     */
+    @RequestMapping(value = "/create",method = RequestMethod.POST)
+    public Message create(@RequestBody ApiServiceVo apiServiceVo) {
         return ApiUtils.doAndResponse(() -> {
 
-            if (apiService.getWorkspaceId() == null){
-                apiService.setWorkspaceId(180L);
+            if (apiServiceVo.getWorkspaceId() == null){
+                apiServiceVo.setWorkspaceId(180L);
             }
 
-            if (StringUtils.isBlank(apiService.getAliasName())) {
+            if (StringUtils.isBlank(apiServiceVo.getAliasName())) {
                 return Message.error("'api service alias name' is missing[缺少中文名]");
             }
 
-            if (StringUtils.isBlank(apiService.getScriptPath())) {
+            if (StringUtils.isBlank(apiServiceVo.getScriptPath())) {
                 return Message.error("'api service script path' is missing[缺少脚本路径]");
             }
-            if (StringUtils.isBlank(apiService.getContent())) {
+            if (StringUtils.isBlank(apiServiceVo.getContent())) {
                 return Message.error("'api service script content' is missing[缺少脚本内容]");
             }
 
-            if (null == apiService.getWorkspaceId()) {
+            if (null == apiServiceVo.getWorkspaceId()) {
                 return Message.error("'api service workspaceId ' is missing[缺少工作空间ID]");
             }
-            if (apiService.getContent().contains(";")) {
-                if(!apiService.getContent().toLowerCase().startsWith("use ")) {
+            if (apiServiceVo.getContent().contains(";")) {
+                if(!apiServiceVo.getContent().toLowerCase().startsWith("use ")) {
                     return Message.error("'api service script content exists semicolon[脚本内容包含分号]");
                 }
             }
 
 //                     check data change script
-            if (WRITABLE_PATTERN.matcher(apiService.getContent()).matches()) {
+            if (WRITABLE_PATTERN.matcher(apiServiceVo.getContent()).matches()) {
                 return Message.error("'api service script content' only supports query[脚本内容只支持查询语句]");
             }
 
-            Map<String, Object> metadata = apiService.getMetadata();
-            if (apiService.getScriptPath().endsWith(".jdbc")) {
+            Map<String, Object> metadata = apiServiceVo.getMetadata();
+            if (apiServiceVo.getScriptPath().endsWith(".jdbc")) {
                 if (MapUtils.isEmpty(metadata)) {
                     return Message.error("'api service metadata' is missing[请选择数据源]");
                 }
@@ -190,13 +207,14 @@ public class ApiServiceCoreRestfulApi {
                 }
             }
 
-            String userName = SecurityFilter.getLoginUsername(req);
-            Set<ConstraintViolation<ApiServiceVo>> result = beanValidator.validate(apiService, Default.class);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
+            LOG.info("user {} begin to create api, params: {}", userName, apiServiceVo);
+            Set<ConstraintViolation<ApiServiceVo>> result = beanValidator.validate(apiServiceVo, Default.class);
             if (result.size() > 0) {
                 throw new ConstraintViolationException(result);
             }
 
-            ApprovalVo approvalVo = apiService.getApprovalVo();
+            ApprovalVo approvalVo = apiServiceVo.getApprovalVo();
 
             if (StringUtils.isBlank(approvalVo.getApprovalName())) {
                 return Message.error("'approvalName' is missing[缺少审批单名字]");
@@ -206,46 +224,46 @@ public class ApiServiceCoreRestfulApi {
                 return Message.error("'applyUser' is missing[缺少申请用户名字]");
             }
 
-            apiService.setCreator(userName);
-            apiService.setModifier(userName);
-            this.apiService.saveByApp(apiService);
-            return Message.ok().data("insert_id", apiService.getId()).data("approval_no",approvalVo.getApprovalNo());
+            apiServiceVo.setCreator(userName);
+            apiServiceVo.setModifier(userName);
+            ApiServiceVo saveResult = apiService.saveByApp(apiServiceVo);
+            Workspace workspace = SSOHelper.getWorkspace(httpServletRequest);
+            AuditLogUtils.printLog(userName, workspace.getWorkspaceId(), workspace.getWorkspaceName(),TargetTypeEnum.APISERVICE,
+                    saveResult.getId(),saveResult.getName() ,OperateTypeEnum.CREATE,apiServiceVo);
+            return Message.ok().data("insert_id", apiServiceVo.getId()).data("approval_no",approvalVo.getApprovalNo());
         }, "/apiservice/api", "Fail to insert service api[新增服务api失败]");
     }
 
-    @PUT
-    @Path("/api/{api_service_version_id}")
-    public Response update(ApiServiceVo apiService,
-                           @PathParam("api_service_version_id") Long apiServiceVersionId,
-                           @Context HttpServletRequest req) {
+    @RequestMapping(value = "/api/{api_service_version_id}",method = RequestMethod.PUT)
+    public Message update(@RequestBody ApiServiceVo apiServiceVo,
+                           @PathVariable("api_service_version_id") Long apiServiceVersionId) {
         return ApiUtils.doAndResponse(() -> {
 
-
-            if (StringUtils.isBlank(apiService.getScriptPath())) {
+            if (StringUtils.isBlank(apiServiceVo.getScriptPath())) {
                 return Message.error("'api service script path' is missing[缺少脚本路径]");
             }
             if(apiServiceVersionId !=0) {
-                if (StringUtils.isBlank(apiService.getPath())) {
+                if (StringUtils.isBlank(apiServiceVo.getPath())) {
                     return Message.error("'api service api path' is missing[缺少api路径]");
                 }
             }
-            if (StringUtils.isBlank(apiService.getContent())) {
+            if (StringUtils.isBlank(apiServiceVo.getContent())) {
                 return Message.error("'api service script content' is missing[缺少脚本内容]");
             }
 
-            if (null == apiService.getWorkspaceId()) {
+            if (null == apiServiceVo.getWorkspaceId()) {
                 return Message.error("'api service workspaceId ' is missing[缺少工作空间ID]");
             }
 
-            if (null == apiService.getTargetServiceId()) {
+            if (null == apiServiceVo.getTargetServiceId()) {
                 return Message.error("'api service update to target service id ' is missing[缺少更新目标服务ID]");
             }
 
-            if (apiService.getContent().contains(";")) {
+            if (apiServiceVo.getContent().contains(";")) {
                 return Message.error("'api service script content exists semicolon[脚本内容包含分号]");
             }
 
-            ApprovalVo approvalVo = apiService.getApprovalVo();
+            ApprovalVo approvalVo = apiServiceVo.getApprovalVo();
 
 //            if (StringUtils.isBlank(approvalVo.getApprovalName())) {
 //                return Message.error("'approvalName' is missing[缺少审批单名字]");
@@ -259,12 +277,12 @@ public class ApiServiceCoreRestfulApi {
 //            }
 
 //             check data change script
-            if (WRITABLE_PATTERN.matcher(apiService.getContent()).matches()) {
+            if (WRITABLE_PATTERN.matcher(apiServiceVo.getContent()).matches()) {
                 return Message.error("'api service script content' only supports query[脚本内容只支持查询语句]");
             }
 
-            Map<String, Object> metadata = apiService.getMetadata();
-            if (apiService.getScriptPath().endsWith(".jdbc")) {
+            Map<String, Object> metadata = apiServiceVo.getMetadata();
+            if (apiServiceVo.getScriptPath().endsWith(".jdbc")) {
                 if (MapUtils.isEmpty(metadata)) {
                     return Message.error("'api service metadata' is missing[请选择数据源]");
                 }
@@ -280,16 +298,20 @@ public class ApiServiceCoreRestfulApi {
                 }
             }
 
-            String userName = SecurityFilter.getLoginUsername(req);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
+            LOG.info("user {} try to update service api, params: {}", userName, apiServiceVo);
 //            Bean validation
-            Set<ConstraintViolation<ApiServiceVo>> result = beanValidator.validate(apiService, Default.class);
+            Set<ConstraintViolation<ApiServiceVo>> result = beanValidator.validate(apiServiceVo, Default.class);
             if (result.size() > 0) {
                 throw new ConstraintViolationException(result);
             }
-            apiService.setLatestVersionId(apiServiceVersionId);
-            apiService.setModifier(userName);
-            apiService.setModifyTime(Calendar.getInstance().getTime());
-            this.apiService.update(apiService);
+            apiServiceVo.setLatestVersionId(apiServiceVersionId);
+            apiServiceVo.setModifier(userName);
+            apiServiceVo.setModifyTime(Calendar.getInstance().getTime());
+            ApiServiceVo updatedResult= apiService.update(apiServiceVo);
+            Workspace workspace = SSOHelper.getWorkspace(httpServletRequest);
+            AuditLogUtils.printLog(userName, workspace.getWorkspaceId(), workspace.getWorkspaceName(),TargetTypeEnum.APISERVICE,
+                    updatedResult.getId(),updatedResult.getName() ,OperateTypeEnum.UPDATE,apiServiceVo);
             return Message.ok().data("update_id", apiServiceVersionId);
         }, "/apiservice/api/" + apiServiceVersionId, "Fail to update service api[更新服务api失败]");
     }
@@ -297,15 +319,13 @@ public class ApiServiceCoreRestfulApi {
 
 
 
-    @GET
-    @Path("/search")
-    public Response query(@QueryParam("name") String name,
-                                    @QueryParam("tag") String tag,
-                                    @QueryParam("status") Integer status,
-                                    @QueryParam("creator") String creator,
-                                    @QueryParam("workspaceId") Integer workspaceId,
-                                    @Context HttpServletRequest req) {
-        String userName = SecurityFilter.getLoginUsername(req);
+    @RequestMapping(value = "/search",method = RequestMethod.GET)
+    public Message query(@RequestParam(required = false, name = "name") String name,
+                                    @RequestParam(required = false, name = "tag") String tag,
+                                    @RequestParam(required = false, name = "status") Integer status,
+                                    @RequestParam(required = false, name = "creator") String creator,
+                                    @RequestParam(required = false, name = "workspaceId") Integer workspaceId) {
+        String userName = SecurityFilter.getLoginUsername(httpServletRequest);
 
         return ApiUtils.doAndResponse(() -> {
             if (null == workspaceId) {
@@ -322,11 +342,9 @@ public class ApiServiceCoreRestfulApi {
     }
 
 
-    @GET
-    @Path("/getUserServices")
-    public Response getUserServices(@QueryParam("workspaceId") Integer workspaceId,
-            @Context HttpServletRequest req){
-        String userName = SecurityFilter.getLoginUsername(req);
+    @RequestMapping(value = "/getUserServices",method = RequestMethod.GET)
+    public Message getUserServices(@RequestParam(required = false, name = "workspaceId") Integer workspaceId){
+        String userName = SecurityFilter.getLoginUsername(httpServletRequest);
         return ApiUtils.doAndResponse(() -> {
             if(!this.apiService.checkUserWorkspace(userName,workspaceId) ){
                 return Message.error("'api service getUserServices workspaceId' is wrong[该用户不属于该工作空间Id]");
@@ -338,10 +356,9 @@ public class ApiServiceCoreRestfulApi {
 
 
 
-    @GET
-    @Path("/tags")
-    public Response query( @Context HttpServletRequest req,@QueryParam("workspaceId") Integer workspaceId) {
-        String userName = SecurityFilter.getLoginUsername(req);
+    @RequestMapping(value = "/tags",method = RequestMethod.GET)
+    public Message query(@RequestParam(required = false, name = "workspaceId") Integer workspaceId) {
+        String userName = SecurityFilter.getLoginUsername(httpServletRequest);
         return ApiUtils.doAndResponse(() -> {
 
             List<String> tags= apiService.queryAllTags(userName,workspaceId);
@@ -350,14 +367,12 @@ public class ApiServiceCoreRestfulApi {
     }
 
 
-    
 
-    @GET
-    @Path("/query")
-    public Response queryByScriptPath(@QueryParam("scriptPath") String scriptPath,
-                                      @Context HttpServletRequest req) {
+
+    @RequestMapping(value = "/query",method = RequestMethod.GET)
+    public Message queryByScriptPath(@RequestParam(required = false, name = "scriptPath") String scriptPath) {
         return ApiUtils.doAndResponse(() -> {
-            String userName = SecurityFilter.getLoginUsername(req);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
             if (StringUtils.isBlank(scriptPath)) {
                 return Message.error("'api service scriptPath' is missing[缺少脚本路径]");
             }
@@ -378,11 +393,9 @@ public class ApiServiceCoreRestfulApi {
         }, "/apiservice/query", "Fail to query page of service api[查询服务api失败]");
     }
 
-    @GET
-    @Path("/queryById")
-    public Response queryById(@QueryParam("id") Long id,
-                              @Context HttpServletRequest req) {
-        String userName = SecurityFilter.getLoginUsername(req);
+    @RequestMapping(value = "/queryById",method = RequestMethod.GET)
+    public Message queryById(@RequestParam(required = false, name = "id") Long id) {
+        String userName = SecurityFilter.getLoginUsername(httpServletRequest);
         return ApiUtils.doAndResponse(() -> {
             if (id==null) {
                 return Message.error("'api service id' is missing[缺少服务ID]");
@@ -396,9 +409,8 @@ public class ApiServiceCoreRestfulApi {
         }, "/apiservice/queryById", "Fail to query page of service api[查询服务api失败]");
     }
 
-    @GET
-    @Path("/checkPath")
-    public Response checkPath(@QueryParam("scriptPath") String scriptPath, @QueryParam("path") String path) {
+    @RequestMapping(value = "/checkPath",method = RequestMethod.GET)
+    public Message checkPath(@RequestParam(required = false, name = "scriptPath") String scriptPath, @RequestParam(required = false, name = "path") String path) {
         //需要跨用户查询
         return ApiUtils.doAndResponse(() -> {
             if (StringUtils.isBlank(scriptPath)) {
@@ -412,9 +424,8 @@ public class ApiServiceCoreRestfulApi {
         }, "/apiservice/checkPath", "Fail to check path of service api[校验服务api路径失败]");
     }
 
-    @GET
-    @Path("/checkName")
-    public Response checkName(@QueryParam("name") String name) {
+    @RequestMapping(value = "/checkName",method = RequestMethod.GET)
+    public Message checkName(@RequestParam(required = false, name = "name") String name) {
         //需要跨用户查询
         return ApiUtils.doAndResponse(() -> {
             if (StringUtils.isBlank(name)) {
@@ -425,73 +436,82 @@ public class ApiServiceCoreRestfulApi {
         }, "/apiservice/checkName", "Fail to check name of service api[校验服务api名称失败]");
     }
 
-    @GET
-    @Path("/apiDisable")
-    public Response apiDisable(@QueryParam("id") Long id,
-                               @Context HttpServletRequest req) {
+    @RequestMapping(value = "/apiDisable",method = RequestMethod.GET)
+    public Message apiDisable(@RequestParam(required = false, name = "id") Long id) {
         return ApiUtils.doAndResponse(() -> {
-            String userName = SecurityFilter.getLoginUsername(req);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
             if (null == id) {
                 return Message.error("'api service api id' is missing[缺少api id]");
             }
-            boolean resultFlag = apiService.disableApi(id,userName);
+            LOG.info("user {} begin to disable service api, id: {}", userName, id);
+            ApiServiceVo apiServiceVo = apiService.queryById(id,userName);
+            boolean resultFlag = apiService.disableApi(userName,apiServiceVo);
+            Workspace workspace = SSOHelper.getWorkspace(httpServletRequest);
+            AuditLogUtils.printLog(userName, workspace.getWorkspaceId(), workspace.getWorkspaceName(),TargetTypeEnum.APISERVICE,
+                    apiServiceVo.getId(),apiServiceVo.getName() ,OperateTypeEnum.DISABLE,apiServiceVo);
             return Message.ok().data("result", resultFlag);
         }, "/apiservice/apiDisable", "Fail to disable api[禁用api失败]");
     }
 
-    @GET
-    @Path("/apiEnable")
-    public Response apiEnable(@QueryParam("id") Long id,
-                              @Context HttpServletRequest req) {
+    @RequestMapping(value = "/apiEnable",method = RequestMethod.GET)
+    public Message apiEnable(@RequestParam(required = false, name = "id") Long id) {
         return ApiUtils.doAndResponse(() -> {
-            String userName = SecurityFilter.getLoginUsername(req);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
             if (null == id) {
                 return Message.error("'api service api id' is missing[缺少api id]");
             }
-            boolean resultFlag = apiService.enableApi(id,userName);
+            LOG.info("user {} begin to enable service api, id: {}", userName, id);
+            ApiServiceVo apiServiceVo = apiService.queryById(id,userName);
+            boolean resultFlag = apiService.enableApi(userName,apiServiceVo);
+            Workspace workspace = SSOHelper.getWorkspace(httpServletRequest);
+            AuditLogUtils.printLog(userName, workspace.getWorkspaceId(), workspace.getWorkspaceName(),TargetTypeEnum.APISERVICE,
+                    apiServiceVo.getId(),apiServiceVo.getName() ,OperateTypeEnum.ENABLE,apiServiceVo);
             return Message.ok().data("result", resultFlag);
         }, "/apiservice/apiEnable", "Fail to enable api[启用api失败]");
     }
 
-    @GET
-    @Path("/apiDelete")
-    public Response apiDelete(@QueryParam("id") Long id,
-                               @Context HttpServletRequest req) {
+    @RequestMapping(value = "/apiDelete",method = RequestMethod.GET)
+    public Message apiDelete(@RequestParam(required = false, name = "id") Long id) {
         //目前暂时不实际删除数据，只做不可见和不可用。
         return ApiUtils.doAndResponse(() -> {
-            String userName = SecurityFilter.getLoginUsername(req);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
             if (null == id) {
                 return Message.error("'api service api id' is missing[缺少api id]");
             }
-            boolean resultFlag = apiService.deleteApi(id,userName);
+            LOG.info("user {} try to delete service api, id: {}", userName, id);
+            ApiServiceVo apiServiceVo = apiService.queryById(id,userName);
+            boolean resultFlag = apiService.deleteApi(userName,apiServiceVo);
+            Workspace workspace = SSOHelper.getWorkspace(httpServletRequest);
+            AuditLogUtils.printLog(userName, workspace.getWorkspaceId(), workspace.getWorkspaceName(),TargetTypeEnum.APISERVICE,
+                    apiServiceVo.getId(),apiServiceVo.getName() ,OperateTypeEnum.DELETE,apiServiceVo);
             return Message.ok().data("result", resultFlag);
         }, "/apiservice/apiDelete", "Fail to delete api[删除api失败]");
     }
 
-    @POST
-    @Path("/apiCommentUpdate")
-    public Response apiCommentUpdate(@Context HttpServletRequest req, JsonNode json) {
+    @RequestMapping(value = "/apiCommentUpdate",method = RequestMethod.POST)
+    public Message apiCommentUpdate(@RequestBody ApiCommentUpdateRequest apiCommentUpdateRequest) {
+        Long id = apiCommentUpdateRequest.getId();
+        String comment = apiCommentUpdateRequest.getComment();
         //目前暂时不实际删除数据，只做不可见和不可用。
-        Long id = json.get("id").getLongValue();
-        String comment=json.get("comment").getTextValue();
         return ApiUtils.doAndResponse(() -> {
-            String userName = SecurityFilter.getLoginUsername(req);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
             if (null == id) {
                 return Message.error("'api service api id' is missing[缺少api id]");
             }
-            boolean resultFlag = apiService.updateComment(id,comment,userName);
+            ApiServiceVo apiServiceVo = apiService.queryById(id,userName);
+            boolean resultFlag = apiService.updateComment(comment,userName,apiServiceVo);
+            Workspace workspace = SSOHelper.getWorkspace(httpServletRequest);
+            AuditLogUtils.printLog(userName, workspace.getWorkspaceId(), workspace.getWorkspaceName(),TargetTypeEnum.APISERVICE,
+                    apiServiceVo.getId(),apiServiceVo.getName() ,OperateTypeEnum.UPDATE,apiCommentUpdateRequest);
             return Message.ok().data("result", resultFlag);
-        }, "/apiservice/apiDelete", "Fail to delete api[删除api失败]");
+        }, "/apiservice/apiDelete", "Fail to update comment api[更新评论失败]");
     }
 
 
-    @GET
-    @Path("/apiParamQuery")
-    public Response apiParamQuery(@QueryParam("scriptPath") String scriptPath,
-                                  @QueryParam("versionId") Long versionId,
-                                  @Context HttpServletRequest req) {
+    @RequestMapping(value = "/apiParamQuery",method = RequestMethod.GET)
+    public Message apiParamQuery(@RequestParam(required = false, name = "scriptPath") String scriptPath,
+                                  @RequestParam(required = false, name = "versionId") Long versionId) {
         return ApiUtils.doAndResponse(() -> {
-            String userName = SecurityFilter.getLoginUsername(req);
             if (StringUtils.isEmpty(scriptPath)) {
                 return Message.error("'api service api scriptPath' is missing[缺少api scriptPath]");
             }
@@ -503,12 +523,10 @@ public class ApiServiceCoreRestfulApi {
         }, "/apiservice/apiParamQuery", "Fail to query api info[查询api信息失败]");
     }
 
-    @GET
-    @Path("/apiVersionQuery")
-    public Response apiVersionQuery(@QueryParam("serviceId") Long serviceId,
-                                    @Context HttpServletRequest req) {
+    @RequestMapping(value = "/apiVersionQuery",method = RequestMethod.GET)
+    public Message apiVersionQuery(@RequestParam(required = false, name = "serviceId") Long serviceId) {
         return ApiUtils.doAndResponse(() -> {
-            String userName = SecurityFilter.getLoginUsername(req);
+            String userName = SecurityFilter.getLoginUsername(httpServletRequest);
             if (null == serviceId) {
                 return Message.error("'api service api serviceId' is missing[缺少api serviceId]");
             }
@@ -519,11 +537,9 @@ public class ApiServiceCoreRestfulApi {
         }, "/apiservice/apiVersionQuery", "Fail to query api version[查询api版本失败]");
     }
 
-    @GET
-    @Path("/apiContentQuery")
-    public Response apiContentQuery(@QueryParam("versionId") Long versionId,
-                                    @Context HttpServletRequest req) {
-        String userName = SecurityFilter.getLoginUsername(req);
+    @RequestMapping(value = "/apiContentQuery",method = RequestMethod.GET)
+    public Message apiContentQuery(@RequestParam(required = false, name = "versionId") Long versionId) {
+        String userName = SecurityFilter.getLoginUsername(httpServletRequest);
         return ApiUtils.doAndResponse(() -> {
             if (null== versionId) {
                 return Message.error("'api service api versionId' is missing[缺少api versionId]");

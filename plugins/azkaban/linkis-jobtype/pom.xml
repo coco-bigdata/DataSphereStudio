@@ -22,7 +22,8 @@
     <parent>
         <artifactId>dss</artifactId>
         <groupId>com.webank.wedatasphere.dss</groupId>
-        <version>1.0.0</version>
+        <version>1.1.0.20-SNAPSHOT</version>
+        <relativePath>../../../pom.xml</relativePath>
     </parent>
     <artifactId>linkis-jobtype</artifactId>
     <properties>
@@ -32,9 +33,25 @@
     <dependencies>
 
         <dependency>
+            <groupId>org.apache.linkis</groupId>
+            <artifactId>linkis-common</artifactId>
+            <version>${linkis.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.webank.wedatasphere.dss</groupId>
             <artifactId>dss-linkis-node-execution</artifactId>
             <version>${dss.version}</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>linkis-common</artifactId>
+                    <groupId>org.apache.linkis</groupId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>snakeyaml</artifactId>
+                    <groupId>org.yaml</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
@@ -52,6 +69,7 @@
                 </exclusion>
             </exclusions>
             <scope>provided</scope>
+
         </dependency>
 
         <dependency>
@@ -84,30 +102,31 @@
                 <artifactId>maven-deploy-plugin</artifactId>
             </plugin>
             <plugin>
-                 <artifactId>maven-assembly-plugin</artifactId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.3</version>
                 <configuration>
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
                     </descriptorRefs>
                 </configuration>
-                 <executions>
-                     <execution>
-                         <id>package</id>
+                <executions>
+                    <execution>
+                        <id>package</id>
 
-                         <phase>package</phase>
-                         <goals>
+                        <phase>package</phase>
+                        <goals>
 
-                             <goal>single</goal>
-                         </goals>
-                         <configuration>
-                             <finalName>${project.artifactId}-${project.version}</finalName>
-                             <descriptors>
-                                 <descriptor>src/main/resources/assembly.xml</descriptor>
-                             </descriptors>
-                         </configuration>
-                     </execution>
-                 </executions>
-             </plugin>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>${project.artifactId}-${project.version}</finalName>
+                            <descriptors>
+                                <descriptor>src/main/resources/assembly.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

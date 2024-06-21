@@ -22,25 +22,26 @@ import com.webank.wedatasphere.dss.linkis.node.execution.exception.LinkisJobExec
 import com.webank.wedatasphere.dss.linkis.node.execution.job.Job;
 import com.webank.wedatasphere.dss.linkis.node.execution.job.LinkisJob;
 import com.webank.wedatasphere.dss.linkis.node.execution.service.BuildJobAction;
-import com.webank.wedatasphere.linkis.manager.label.constant.LabelKeyConstant;
-import com.webank.wedatasphere.linkis.manager.label.entity.engine.EngineTypeLabel;
-import com.webank.wedatasphere.linkis.manager.label.utils.EngineTypeLabelCreator;
-import com.webank.wedatasphere.linkis.protocol.utils.TaskUtils;
-import com.webank.wedatasphere.linkis.ujes.client.request.JobExecuteAction;
-import com.webank.wedatasphere.linkis.ujes.client.request.JobSubmitAction;
-
-import java.util.HashMap;
-import java.util.Map;
-
-import org.apache.commons.lang.StringUtils;
+import com.webank.wedatasphere.dss.linkis.node.execution.utils.LinkisJobExecutionUtils;
+import org.apache.commons.lang3.SerializationUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.linkis.manager.label.constant.LabelKeyConstant;
+import org.apache.linkis.manager.label.entity.engine.EngineTypeLabel;
+import org.apache.linkis.manager.label.utils.EngineTypeLabelCreator;
+import org.apache.linkis.protocol.constants.TaskConstant;
+import org.apache.linkis.protocol.utils.TaskUtils;
+import org.apache.linkis.ujes.client.request.JobExecuteAction;
+import org.apache.linkis.ujes.client.request.JobSubmitAction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-import static com.webank.wedatasphere.dss.linkis.node.execution.conf.LinkisJobExecutionConfiguration.LINKIS_JOB_CREATOR;
+import static com.webank.wedatasphere.dss.linkis.node.execution.conf.LinkisJobExecutionConfiguration.*;
 
 
 public class BuildJobActionImpl implements BuildJobAction {
@@ -73,9 +74,21 @@ public class BuildJobActionImpl implements BuildJobAction {
 
     private String parseExecutionCode(Job job) {
         String code = job.getCode();
+        logger.info("The parseExecutionCode0X code for the job is {}", code);
         if (StringUtils.isEmpty(code) || code.equalsIgnoreCase("null")) {
-            Gson gson = new Gson();
-            code = gson.toJson(job.getParams());
+            code = LinkisJobExecutionUtils.gson.toJson(job.getParams());
+            logger.info("The executable code for the job is {}", code);
+        }
+        return code;
+    }
+
+
+    private String parseExecutionCodeFor1X(Job job) {
+        String code = job.getCode();
+        logger.info("The parseExecutionCodeFor1X code for the job is {}", code);
+        //for appconn node  in subflow  contains embeddedFlowId
+        if (StringUtils.isEmpty(code) || code.equalsIgnoreCase("null") || code.contains(EMBEDDED_FLOW_ID.getValue())) {
+            code = LinkisJobExecutionUtils.gson.toJson(job.getParams());
             logger.info("The executable code for the job is {}", code);
         }
         return code;
@@ -87,9 +100,9 @@ public class BuildJobActionImpl implements BuildJobAction {
 
         enrichParams(job);
 
-        Map<String, Object> labels = prepareYarnLabel(job);
-
-        TaskUtils.addLabelsMap(job.getParams(), labels);
+//        Map<String, Object> labels = prepareYarnLabel(job);
+//
+//        TaskUtils.addLabelsMap(job.getParams(), labels);
 
         String code = parseExecutionCode(job);
 
@@ -116,12 +129,12 @@ public class BuildJobActionImpl implements BuildJobAction {
 
         TaskUtils.addLabelsMap(job.getParams(), labels);
 
-        String code = parseExecutionCode(job);
+        String code = parseExecutionCodeFor1X(job);
 
         EngineTypeLabel engineTypeLabel = EngineTypeLabelCreator.createEngineTypeLabel(parseAppConnEngineType(job.getEngineType(), job));
 
         labels.put(LabelKeyConstant.ENGINE_TYPE_KEY, engineTypeLabel.getStringValue());
-        labels.put(LabelKeyConstant.USER_CREATOR_TYPE_KEY, job.getUser() + "-" + LINKIS_JOB_CREATOR.getValue());
+        labels.put(LabelKeyConstant.USER_CREATOR_TYPE_KEY, job.getUser() + "-" + LINKIS_JOB_CREATOR_1_X.getValue(job.getJobProps()));
         labels.put(LabelKeyConstant.CODE_TYPE_KEY, parseRunType(job.getEngineType(), job.getRunType(), job));
 
 
@@ -129,18 +142,29 @@ public class BuildJobActionImpl implements BuildJobAction {
         if(!isReuseEngine(job.getParams())){
             labels.put("executeOnce", "");
         }
-        JobSubmitAction.Builder builder = JobSubmitAction.builder().setUser(LINKIS_JOB_CREATOR.getValue(job.getJobProps()))
+        Map<String, Object> paramMapCopy = (HashMap<String, Object>) SerializationUtils.clone(new HashMap<String, Object>(job.getParams()));
+        replaceSparkConfParams(paramMapCopy);
+
+        JobSubmitAction.Builder builder = JobSubmitAction.builder()
                 .addExecuteCode(code)
-                .setUser(job.getUser())
                 .addExecuteUser(job.getUser())
-                .setParams(job.getParams())
+                .setParams(paramMapCopy)
                 .setLabels(labels)
                 .setRuntimeParams(job.getRuntimeParams());
         if (job instanceof LinkisJob) {
+            LinkisJob linkisJob = (LinkisJob) job;
+            builder = builder.setUser(linkisJob.getSubmitUser());
             Map<String, Object> source = new HashMap<>();
-            source.putAll(((LinkisJob) job).getSource());
+            source.putAll(linkisJob.getSource());
             builder = builder.setSource(source);
+        }else{
+            builder = builder.setUser(job.getUser());
         }
+        // 将execute接口带来的额外variable参数，带进来  todo check
+        Map<String, Object> propMap = new HashMap<>();
+        propMap.putAll(job.getJobProps());
+        TaskUtils.addVariableMap(paramMapCopy, TaskUtils.getVariableMap(propMap));
+        builder.setParams(paramMapCopy);
         return builder.build();
     }
 
@@ -163,6 +187,34 @@ public class BuildJobActionImpl implements BuildJobAction {
             }
         }
         return true;
+    }
+
+    /**
+     * spark自定义参数配置输入，例如spark.sql.shuffle.partitions=10。多个参数使用分号分隔。
+     *
+     * 如果节点指定了参数模板，则需要把节点内与模板相同的参数取消掉，保证模板优先级高于节点参数
+     *
+     * @param paramMapCopy
+     * @throws LinkisJobExecutionErrorException
+     */
+    private void replaceSparkConfParams(Map<String, Object> paramMapCopy) throws LinkisJobExecutionErrorException {
+        Map<String, Object> startupMap = TaskUtils.getStartupMap(paramMapCopy);
+        logger.info("try process keys in template");
+        //如果节点指定了参数模板，则需要把节点内与模板相同的参数取消掉，保证模板优先级高于节点参数
+        if (startupMap.containsKey("ec.conf.templateId")) {
+            logger.info("remove keys in template");
+            logger.info("before remove startup map:{}",startupMap.keySet());
+            startupMap.remove("spark.driver.memory");
+            startupMap.remove("spark.executor.memory");
+            startupMap.remove("spark.executor.cores");
+            startupMap.remove("spark.executor.instances");
+            startupMap.remove("wds.linkis.engineconn.java.driver.memory");
+            startupMap.remove("spark.conf");
+            logger.info("after remove startup map:{}",startupMap.keySet());
+        }
+        Map<String, Object> configurationMap = TaskUtils.getMap(paramMapCopy, TaskConstant.PARAMS_CONFIGURATION);
+        configurationMap.put(TaskConstant.PARAMS_CONFIGURATION_STARTUP, startupMap);
+        paramMapCopy.put(TaskConstant.PARAMS_CONFIGURATION, configurationMap);
     }
 
     //TODO

@@ -36,14 +36,10 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.SocketTimeoutException;
 import java.net.URLEncoder;
-import java.security.cert.CertificateException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -54,36 +50,12 @@ public final class HttpClientUtil {
 	private static PoolingHttpClientConnectionManager connManager = null;
 	private static CloseableHttpClient httpclient = null;
 
-	private static TrustManager trustAllManager = new X509TrustManager() {
-		@Override
-		public void checkClientTrusted(java.security.cert.X509Certificate[] arg0, String arg1)
-				throws CertificateException {
-		}
-		@Override
-		public void checkServerTrusted(java.security.cert.X509Certificate[] arg0, String arg1)
-				throws CertificateException {
-		}
-		@Override
-		public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-			return null;
-		}
-
-	};
 
 	static {
 		httpclient = HttpClients.createDefault();
 	}
 	
-	
-    /**
-     * 
-     * @param url
-     * @param timeout
-     * @param headerMap
-     * @param paramsList
-     * @param encoding
-     * @return
-     */
+
     public static String postForm(String url, int timeout, Map<String, Object> headerMap, List<NameValuePair> paramsList, String encoding){
         HttpPost post = new HttpPost(url);
         try {
@@ -127,11 +99,6 @@ public final class HttpClientUtil {
         return "";
     }
 
-	/**
-	 * 调用saltapi时
-	 *
-	 * @author: XIEJIAN948@pingan.com.cn
-	 */
 	public static String postJsonBody(String url, int timeout, Map<String, Object> headerMap,
 			String paraData, String encoding) {
 
@@ -168,10 +135,10 @@ public final class HttpClientUtil {
 			}
 		} catch (UnsupportedEncodingException e) {
 			logger.error("UnsupportedEncodingException", e);
-			throw new RuntimeException("failed post json return blank!");
+			throw new RuntimeException("postJsonBody error: "+e.getMessage());
 		} catch (Exception e) {
 			logger.error("Exception", e);
-			throw new RuntimeException("failed post json return blank!");
+			throw new RuntimeException("postJsonBody Exception: "+e.getMessage());
 		} finally {
 			post.releaseConnection();
 		}
@@ -343,11 +310,6 @@ public final class HttpClientUtil {
 		return sdf.format(date);
 	}
 
-	/**
-	 * 调用saltapi时
-	 *
-	 * @author: XIEJIAN948@pingan.com.cn
-	 */
 	public static String postJsonBody2(String url, int timeout, Map<String, Object> headerMap,
                                        List<NameValuePair> paramsList, String encoding) {
 		logger.info("successfully  start post Json Body  url{} ", url);
@@ -396,11 +358,6 @@ public final class HttpClientUtil {
 		return "";
 	}
 
-	/**
-	 * 调用saltapi时
-	 *
-	 * @author: XIEJIAN948@pingan.com.cn
-	 */
 	public static String postJsonBody3(String url, int timeout, Map<String, Object> headerMap,
 			Map<String, Object> paramsList, String encoding) {
 		HttpPost post = new HttpPost(url);
@@ -460,7 +417,7 @@ public final class HttpClientUtil {
 			//获得返回的结果
 			rtnStr = EntityUtils.toString(httpResponse.getEntity());
 		} catch (IOException e) {
-			e.printStackTrace();
+			logger.error("invoke failed",e);
 		} finally {
 			httpGet.releaseConnection();
 		}

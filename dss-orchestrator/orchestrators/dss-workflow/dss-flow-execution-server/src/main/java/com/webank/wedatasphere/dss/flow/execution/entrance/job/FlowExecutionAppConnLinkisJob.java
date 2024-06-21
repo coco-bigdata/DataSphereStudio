@@ -16,8 +16,10 @@
 
 package com.webank.wedatasphere.dss.flow.execution.entrance.job;
 
+import com.webank.wedatasphere.dss.common.utils.DSSCommonUtils;
 import com.webank.wedatasphere.dss.flow.execution.entrance.conf.FlowExecutionEntranceConfiguration;
 import com.webank.wedatasphere.dss.linkis.node.execution.job.AbstractAppConnLinkisJob;
+import org.apache.commons.lang3.StringUtils;
 
 
 public class FlowExecutionAppConnLinkisJob extends AbstractAppConnLinkisJob {
@@ -28,12 +30,21 @@ public class FlowExecutionAppConnLinkisJob extends AbstractAppConnLinkisJob {
         return getJobProps().get(FlowExecutionEntranceConfiguration.FLOW_SUBMIT_USER());
     }
 
-
-
     @Override
     public String getUser() {
-       return getSubmitUser();
-        //return getJobProps().get(FlowExecutionEntranceConfiguration.PROXY_USER());
+        String labels = getJobProps().getOrDefault(DSSCommonUtils.DSS_LABELS_KEY, DSSCommonUtils.ENV_LABEL_VALUE_DEV);
+        boolean executeByProxyUserInDevEnable = "true".equalsIgnoreCase(getJobProps().get(DSSCommonUtils.DSS_EXECUTE_BY_PROXY_USER_KEY));
+        String submitUser = getSubmitUser();
+        if (DSSCommonUtils.ENV_LABEL_VALUE_DEV.equals(labels) && !executeByProxyUserInDevEnable) {
+            return submitUser;
+        } else {
+            String proxyUser = getJobProps().get(FlowExecutionEntranceConfiguration.PROXY_USER());
+            if(StringUtils.isNotEmpty(proxyUser)){
+                return proxyUser;
+            }else {
+                return submitUser;
+            }
+        }
     }
 
     @Override

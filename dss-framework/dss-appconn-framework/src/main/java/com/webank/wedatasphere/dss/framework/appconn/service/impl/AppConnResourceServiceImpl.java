@@ -17,13 +17,12 @@
 package com.webank.wedatasphere.dss.framework.appconn.service.impl;
 
 import com.webank.wedatasphere.dss.appconn.loader.utils.AppConnUtils;
-import com.webank.wedatasphere.dss.appconn.manager.AppConnManager;
 import com.webank.wedatasphere.dss.appconn.manager.entity.AppConnInfo;
-import com.webank.wedatasphere.dss.appconn.manager.impl.AbstractAppConnManager;
 import com.webank.wedatasphere.dss.appconn.manager.service.AppConnResourceService;
 import com.webank.wedatasphere.dss.appconn.manager.utils.AppConnIndexFileUtils;
 import com.webank.wedatasphere.dss.common.entity.Resource;
 import com.webank.wedatasphere.dss.common.exception.DSSErrorException;
+import com.webank.wedatasphere.dss.common.utils.DSSCommonUtils;
 import com.webank.wedatasphere.dss.common.utils.ZipHelper;
 import com.webank.wedatasphere.dss.framework.appconn.dao.AppConnMapper;
 import com.webank.wedatasphere.dss.framework.appconn.entity.AppConnBean;
@@ -31,24 +30,22 @@ import com.webank.wedatasphere.dss.framework.appconn.entity.AppConnResource;
 import com.webank.wedatasphere.dss.framework.appconn.exception.AppConnNotExistsErrorException;
 import com.webank.wedatasphere.dss.framework.appconn.service.AppConnResourceUploadService;
 import com.webank.wedatasphere.dss.framework.appconn.utils.AppConnServiceUtils;
-import com.webank.wedatasphere.linkis.bml.client.BmlClient;
-import com.webank.wedatasphere.linkis.bml.client.BmlClientFactory;
-import com.webank.wedatasphere.linkis.bml.protocol.BmlUpdateResponse;
-import com.webank.wedatasphere.linkis.bml.protocol.BmlUploadResponse;
-import com.webank.wedatasphere.linkis.common.utils.Utils;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.linkis.bml.client.BmlClient;
+import org.apache.linkis.bml.client.BmlClientFactory;
+import org.apache.linkis.bml.protocol.BmlUpdateResponse;
+import org.apache.linkis.bml.protocol.BmlUploadResponse;
+import org.apache.linkis.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import java.io.*;
+import java.nio.file.Paths;
 
 
 @Component
@@ -68,29 +65,24 @@ public class AppConnResourceServiceImpl implements AppConnResourceService, AppCo
 
     @Override
     public String getAppConnHome(AppConnInfo appConnInfo) {
-        AppConnBean appConnBean = (AppConnBean) appConnInfo;
-        String appConnHome=appConnBean.getAppConnClassPath();
-        if(appConnHome.endsWith(LIB_NAME)){
-            appConnHome =appConnHome.substring(0,appConnHome.lastIndexOf(LIB_NAME));
-        }
-        return appConnHome;
+        return Paths.get(AppConnUtils.getAppConnHomePath(), appConnInfo.getAppConnName()).toFile().getPath();
     }
 
     @Override
     public void upload(String appConnName) throws DSSErrorException {
         File appConnPath = new File(AppConnUtils.getAppConnHomePath(), appConnName);
+        AppConnBean appConnBean = appConnMapper.getAppConnBeanByName(appConnName);
         if (!appConnPath.exists()) {
-            throw new AppConnNotExistsErrorException(20350, "AppConn home path " + appConnPath.getPath() + " not exists.");
+            //没有reference，必须有appconn目录
+            if (StringUtils.isBlank(appConnBean.getReference())) {
+                throw new AppConnNotExistsErrorException(20350, "AppConn home path " + appConnPath.getPath() + " not exists.");
+            } else {
+                LOGGER.info("Appconn {} references other appConns and has no directory, so no upload is required", appConnName);
+                return;
+            }
         } else if (!appConnPath.isDirectory()) {
             throw new AppConnNotExistsErrorException(20350, "AppConn home path " + appConnPath.getPath() + " is not a directory.");
         }
-        File zipFile = new File(appConnPath.getPath() + ".zip");
-        if (zipFile.exists() && !zipFile.delete()) {
-            throw new AppConnNotExistsErrorException(20001, "No permission to delete old zip file " + zipFile);
-        }
-        ZipHelper.zip(appConnPath.getPath(), false);
-//      TODO  ZipUtils.fileToZip(appConnPath.getPath(), AppConnUtils.getAppConnHomePath(), appConnName + ".zip");
-        AppConnBean appConnBean = appConnMapper.getAppConnBeanByName(appConnName);
         AppConnResource appConnResource;
         File indexFile = null;
         if (appConnBean == null) {
@@ -100,7 +92,7 @@ public class AppConnResourceServiceImpl implements AppConnResourceService, AppCo
             appConnResource = AppConnServiceUtils.stringToResource(appConnBean.getResource());
             indexFile = AppConnIndexFileUtils.getIndexFile(appConnPath);
             if (appConnPath.lastModified() == appConnResource.getLastModifiedTime()
-                    && zipFile.length() == appConnResource.getSize() && AppConnIndexFileUtils.isLatestIndex(appConnPath, appConnResource.getResource())) {
+                    && AppConnIndexFileUtils.isLatestIndex(appConnPath, appConnResource.getResource())) {
                 LOGGER.info("No necessary to update the AppConn {}, since it's packages has no changes in path {}.", appConnName, appConnPath.getPath());
                 return;
             }
@@ -108,49 +100,42 @@ public class AppConnResourceServiceImpl implements AppConnResourceService, AppCo
             // If resource is not exists, this is the first time to upload this AppConn.
             appConnResource = new AppConnResource();
         }
+        File zipFile = new File(appConnPath.getPath() + ".zip");
+        if (zipFile.exists() && !zipFile.delete()) {
+            throw new AppConnNotExistsErrorException(20001, "No permission to delete old zip file " + zipFile);
+        }
+        ZipHelper.zip(appConnPath.getPath(), false);
         // At first, upload appConn file to BML
         Resource resource = new Resource();
         InputStream inputStream = null;
         if (appConnResource.getResource() != null) {
             try {
                 inputStream = new FileInputStream(zipFile.getPath());
-
-                BmlUpdateResponse response = bmlClient.updateResource(Utils.getJvmUser(), appConnResource.getResource().getResourceId(), zipFile.getPath(),inputStream);
+                BmlUpdateResponse response = bmlClient.updateResource(Utils.getJvmUser(), appConnResource.getResource().getResourceId(), zipFile.getPath(), inputStream);
                 resource.setResourceId(appConnResource.getResource().getResourceId());
                 resource.setVersion(response.version());
             } catch (FileNotFoundException e) {
-                throw new AppConnNotExistsErrorException(20351, "AppConn update to bml failed"+e.getMessage());
+                throw new AppConnNotExistsErrorException(20351, "AppConn update to bml failed" + e.getMessage());
             } finally {
                 IOUtils.closeQuietly(inputStream);
             }
+            LOGGER.info("AppConn {} updated Resource, from {} to {}.", appConnName,
+                    DSSCommonUtils.COMMON_GSON.toJson(appConnResource.getResource()), DSSCommonUtils.COMMON_GSON.toJson(resource));
         } else {
-
             try {
                 inputStream = new FileInputStream(zipFile.getPath());
                 BmlUploadResponse response = bmlClient.uploadResource(Utils.getJvmUser(), zipFile.getPath(), inputStream);
                 resource.setResourceId(response.resourceId());
                 resource.setVersion(response.version());
             } catch (FileNotFoundException e) {
-                throw new AppConnNotExistsErrorException(20352, "AppConn update to bml failed"+e.getMessage());
+                throw new AppConnNotExistsErrorException(20352, "AppConn update to bml failed" + e.getMessage());
             } finally {
                 IOUtils.closeQuietly(inputStream);
             }
-
+            LOGGER.info("AppConn {} completed the first upload of Resource with {}.", appConnName,
+                    DSSCommonUtils.COMMON_GSON.toJson(resource));
         }
         resource.setFileName(zipFile.getName());
-        // Then, insert into db.
-        appConnResource.setLastModifiedTime(appConnPath.lastModified());
-        appConnResource.setSize(zipFile.length());
-        appConnResource.setResource(resource);
-        String resourceStr = AppConnServiceUtils.resourceToString(appConnResource);
-
-        AppConnBean appConnBeanReLoad = new AppConnBean();
-        appConnBeanReLoad.setId(appConnBean.getId());
-        appConnBeanReLoad.setResource(resourceStr);
-        appConnBeanReLoad.setAppConnName(appConnName);
-        appConnBeanReLoad.setAppConnClassPath(appConnPath.getPath());
-        appConnBeanReLoad.setClassName(appConnBean.getClassName());
-        appConnMapper.updateResourceByName(appConnBeanReLoad);
         // update index file.
         if (indexFile != null && !indexFile.delete()) {
             throw new AppConnNotExistsErrorException(20350, "Delete index file " + indexFile.getName() + " failed, please ensure the permission is all right.");
@@ -161,13 +146,22 @@ public class AppConnResourceServiceImpl implements AppConnResourceService, AppCo
         } catch (IOException e) {
             throw new AppConnNotExistsErrorException(20350, "create index file " + indexFile.getName() + " failed, please ensure the permission is all right.", e);
         }
-        // Finally, reload this AppConn.
-        ((AbstractAppConnManager) AppConnManager.getAppConnManager()).reloadAppConn(appConnBeanReLoad);
+        // Then, insert into db.
+        appConnResource.setLastModifiedTime(appConnPath.lastModified());
+        appConnResource.setSize(zipFile.length());
+        appConnResource.setResource(resource);
+        String resourceStr = AppConnServiceUtils.resourceToString(appConnResource);
+        AppConnBean appConnBeanReLoad = new AppConnBean();
+        appConnBeanReLoad.setId(appConnBean.getId());
+        appConnBeanReLoad.setResource(resourceStr);
+        appConnBeanReLoad.setAppConnName(appConnName);
+        appConnBeanReLoad.setClassName(appConnBean.getClassName());
+        appConnMapper.updateResourceByName(appConnBeanReLoad);
         LOGGER.info("AppConn {} has updated resource to {}.", appConnName, resourceStr);
     }
 
     @PreDestroy
-    public void destory() {
+    public void destroy() {
         IOUtils.closeQuietly(bmlClient);
     }
 }

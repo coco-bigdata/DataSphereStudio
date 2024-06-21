@@ -18,9 +18,8 @@ package com.webank.wedatasphere.dss.linkis.node.execution.job;
 
 import com.webank.wedatasphere.dss.linkis.node.execution.entity.BMLResource;
 import com.webank.wedatasphere.dss.linkis.node.execution.log.LinkisJobExecutionLog;
-import com.webank.wedatasphere.linkis.ujes.client.response.JobExecuteResult;
+import org.apache.linkis.ujes.client.response.JobExecuteResult;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 

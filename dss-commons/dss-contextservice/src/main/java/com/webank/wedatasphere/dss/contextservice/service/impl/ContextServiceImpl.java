@@ -20,38 +20,36 @@ import com.google.gson.*;
 import com.webank.wedatasphere.dss.common.conf.DSSCommonConf;
 import com.webank.wedatasphere.dss.common.entity.Resource;
 import com.webank.wedatasphere.dss.common.exception.DSSErrorException;
+import com.webank.wedatasphere.dss.common.exception.DSSRuntimeException;
 import com.webank.wedatasphere.dss.common.exception.ErrorCode;
 import com.webank.wedatasphere.dss.common.utils.DSSCommonUtils;
 import com.webank.wedatasphere.dss.contextservice.service.ContextService;
-import com.webank.wedatasphere.linkis.common.exception.ErrorException;
-import com.webank.wedatasphere.linkis.cs.client.ContextClient;
-import com.webank.wedatasphere.linkis.cs.client.builder.ContextClientFactory;
-import com.webank.wedatasphere.linkis.cs.client.service.CSWorkService;
-import com.webank.wedatasphere.linkis.cs.client.service.CSWorkServiceImpl;
-import com.webank.wedatasphere.linkis.cs.client.utils.SerializeHelper;
-import com.webank.wedatasphere.linkis.cs.common.entity.enumeration.ContextScope;
-import com.webank.wedatasphere.linkis.cs.common.entity.enumeration.ContextType;
-import com.webank.wedatasphere.linkis.cs.common.entity.enumeration.WorkType;
-import com.webank.wedatasphere.linkis.cs.common.entity.object.CSFlowInfos;
-import com.webank.wedatasphere.linkis.cs.common.entity.object.LinkisVariable;
-import com.webank.wedatasphere.linkis.cs.common.entity.resource.LinkisBMLResource;
-import com.webank.wedatasphere.linkis.cs.common.entity.source.*;
-import com.webank.wedatasphere.linkis.cs.common.utils.CSCommonUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.linkis.common.exception.ErrorException;
+import org.apache.linkis.cs.client.ContextClient;
+import org.apache.linkis.cs.client.builder.ContextClientFactory;
+import org.apache.linkis.cs.client.service.CSWorkService;
+import org.apache.linkis.cs.client.service.CSWorkServiceImpl;
+import org.apache.linkis.cs.client.utils.SerializeHelper;
+import org.apache.linkis.cs.common.entity.enumeration.ContextScope;
+import org.apache.linkis.cs.common.entity.enumeration.ContextType;
+import org.apache.linkis.cs.common.entity.enumeration.WorkType;
+import org.apache.linkis.cs.common.entity.object.CSFlowInfos;
+import org.apache.linkis.cs.common.entity.object.LinkisVariable;
+import org.apache.linkis.cs.common.entity.resource.LinkisBMLResource;
+import org.apache.linkis.cs.common.entity.source.*;
+import org.apache.linkis.cs.common.utils.CSCommonUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
-/**
- * @Author alexyang
- * @Date 2020-0318
- */
 public class ContextServiceImpl implements ContextService {
 
     private static final Logger logger = LoggerFactory.getLogger(ContextServiceImpl.class);
     private static ContextClient contextClient = ContextClientFactory.getOrCreateContextClient();
-    private static ContextService contextService = null;
+    private static volatile ContextService contextService = null;
 
     private ContextServiceImpl() {}
 
@@ -80,8 +78,9 @@ public class ContextServiceImpl implements ContextService {
             return SerializeHelper.serializeContextID(contextID);
         } catch (Exception e) {
             logger.error("createContextID error. workspace : {}, project : {}, flow : {}, version : {}, user : {}", workspace, project, flow, version, user, e);
+            throw new DSSRuntimeException(50032, "Try to ask Linkis for creating a new contextId failed(向Linkis请求创建一个ContextID失败)! Linkis error msg: " +
+                    ExceptionUtils.getRootCauseMessage(e), e);
         }
-        return null;
     }
 
     @Override
@@ -106,13 +105,12 @@ public class ContextServiceImpl implements ContextService {
                         if (!DSSCommonConf.DSS_IO_ENV.getValue().equalsIgnoreCase(contextID.getEnv())) {
                             updateContextId = true;
                         } else if (StringUtils.isBlank(contextID.getProject())
-                                || StringUtils.isBlank(contextID.getFlow())
-                                || StringUtils.isBlank(contextID.getVersion())) {
+                                || StringUtils.isBlank(contextID.getFlow())) {
                             updateContextId = false;
                         } else if ((null != contextID.getWorkSpace() && !contextID.getWorkSpace().equalsIgnoreCase(workspace))
                                 || !contextID.getProject().equalsIgnoreCase(project)
                                 || !contextID.getFlow().equalsIgnoreCase(flow)
-                                || !contextID.getVersion().equalsIgnoreCase(flowVersion)) {
+                                || !flowVersion.equalsIgnoreCase(contextID.getVersion())) {
                             updateContextId = true;
                         } else {
                             updateContextId = false;
@@ -146,7 +144,7 @@ public class ContextServiceImpl implements ContextService {
             JsonObject flowObject = new Gson().fromJson(jsonFlow, JsonObject.class);
             if (!flowObject.has(CSCommonUtils.CONTEXT_ID_STR) || !flowObject.get(CSCommonUtils.CONTEXT_ID_STR).isJsonPrimitive()) {
                 logger.error("Did not have invalid contextID, save context failed.");
-                return;
+                throw new DSSRuntimeException("does not have valid ContextID, save context failed(工作流格式错误，缺失有效的CS信息)");
             } else {
                 String contextIDStr = flowObject.get(CSCommonUtils.CONTEXT_ID_STR).getAsString();
                 // ①reset原有key 这里只清理
@@ -156,12 +154,6 @@ public class ContextServiceImpl implements ContextService {
                 workTypes.add(WorkType.PROJECT);
                 workTypes.add(WorkType.FLOW);
                 csWorkService.initContextServiceInfo(contextIDStr, workTypes);
-
-                // ②解析和保存新的 UDF、Resource、Variable
-                // 保存Workspace和Project的资源参数等
-//                if (null != project.getProjectResources() && project.getProjectResources().size() > 0) {
-//                    saveContextResource(contextIDStr, project.getProjectResources(), contextClient, CSCommonUtils.PROJECT_RESOURCE_PREFIX);
-//                }
 
                 // 保存flow的资源
                 if (flowObject.has(DSSCommonUtils.FLOW_RESOURCE_NAME)) {
@@ -179,19 +171,16 @@ public class ContextServiceImpl implements ContextService {
                     JsonArray nodes = flowObject.get(DSSCommonUtils.FLOW_NODE_NAME).getAsJsonArray();
                     for (JsonElement node : nodes) {
                         JsonObject json = node.getAsJsonObject();
+                        String nodeName =json.get(DSSCommonUtils.NODE_NAME_NAME).getAsString();
+                        initContextNodeVarInfo(contextIDStr,nodeName,contextClient);
                         if (json.has(DSSCommonUtils.NODE_RESOURCE_NAME)) {
                             JsonArray nodeRes = json.get(DSSCommonUtils.NODE_RESOURCE_NAME).getAsJsonArray();
                             saveContextResource(contextIDStr, nodeRes, contextClient,
                                     CSCommonUtils.NODE_PREFIX, json.get(DSSCommonUtils.NODE_NAME_NAME).getAsString());
                         }
-                        if (json.has(DSSCommonUtils.NODE_PROP_NAME)) {
-                            JsonObject nodePropObj = json.get(DSSCommonUtils.NODE_PROP_NAME).getAsJsonObject();
-                            if (nodePropObj.has(DSSCommonUtils.NODE_PROP_VARIABLE_NAME)) {
-                                JsonElement nodeVariables = nodePropObj.get(DSSCommonUtils.NODE_PROP_VARIABLE_NAME);
-                                saveContextVariable(contextIDStr, nodeVariables, contextClient,
-                                        CSCommonUtils.NODE_PREFIX, json.get(DSSCommonUtils.NODE_NAME_NAME).getAsString());
-                            }
-                        }
+//                        if (json.has(DSSCommonUtils.NODE_PROP_NAME)) {
+//                            JsonObject nodePropObj = json.get(DSSCommonUtils.NODE_PROP_NAME).getAsJsonObject();
+//                        }
                     }
                 }
                 // 保存info信息
@@ -200,6 +189,15 @@ public class ContextServiceImpl implements ContextService {
         } catch (Exception e) {
             logger.error("CheckAndSaveContext error. jsonFlow : {}, parentFlowId : {}, e : ", jsonFlow, parentFlowID, e);
             throw new DSSErrorException(ErrorCode.INVALID_PARAMS, "CheckAndSaveContext error : " + e.getMessage());
+        }
+    }
+
+    private void initContextNodeVarInfo(String contextIDStr,String nodeName,ContextClient contextClient){
+        try {
+            ContextID contextID  = SerializeHelper.deserializeContextID(contextIDStr);
+            contextClient.removeAllValueByKeyPrefixAndContextType(contextID, ContextType.Variable, CSCommonUtils.NODE_PREFIX + nodeName);
+        } catch (ErrorException e) {
+            logger.error("CheckAndSaveContext error. ContextID : {}, nodeName : {}, e : ", contextIDStr,nodeName, e);
         }
     }
 
@@ -262,7 +260,7 @@ public class ContextServiceImpl implements ContextService {
                 contextKeyPrefix = uniKeyPrefix;
                 break;
             case CSCommonUtils.NODE_PREFIX:
-                contextKeyPrefix = uniKeyPrefix + nodeName + "." + CSCommonUtils.RESOURCE_PREFIX;
+                contextKeyPrefix = uniKeyPrefix + nodeName + "." + CSCommonUtils.VARIABLE_PREFIX;
                 break;
             default:
                 logger.error("Invalid contextKeyPrefix : {}", uniKeyPrefix);
@@ -273,7 +271,7 @@ public class ContextServiceImpl implements ContextService {
         linkisVariable.setValue(entry.getValue().getAsString());
         ContextKey contextKey = new CommonContextKey();
         contextKey.setKey(contextKeyPrefix + linkisVariable.getKey());
-        contextKey.setContextType(ContextType.OBJECT);
+        contextKey.setContextType(ContextType.Variable);
         contextKey.setContextScope(ContextScope.PUBLIC);
         ContextValue contextValue = new CommonContextValue();
         contextValue.setValue(linkisVariable);
@@ -410,7 +408,4 @@ public class ContextServiceImpl implements ContextService {
             logger.error("Set ContextKeyValue error. contextIDStr ");
         }
     }
-
-
-
 }

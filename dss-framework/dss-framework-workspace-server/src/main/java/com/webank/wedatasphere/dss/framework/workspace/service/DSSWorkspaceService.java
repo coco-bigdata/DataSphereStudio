@@ -16,11 +16,22 @@
 
 package com.webank.wedatasphere.dss.framework.workspace.service;
 
-import com.webank.wedatasphere.dss.framework.workspace.bean.DSSMenu;
+import com.github.pagehelper.PageInfo;
+import com.webank.wedatasphere.dss.common.exception.DSSErrorException;
+import com.webank.wedatasphere.dss.framework.workspace.bean.DSSUserRoleComponentPriv;
 import com.webank.wedatasphere.dss.framework.workspace.bean.DSSWorkspace;
-import com.webank.wedatasphere.dss.framework.workspace.bean.dto.response.*;
-import com.webank.wedatasphere.dss.framework.workspace.bean.vo.*;
-import com.webank.wedatasphere.linkis.common.exception.ErrorException;
+import com.webank.wedatasphere.dss.framework.workspace.bean.DSSWorkspaceAssociateDepartments;
+import com.webank.wedatasphere.dss.framework.workspace.bean.dto.response.WorkspaceMenuVo;
+import com.webank.wedatasphere.dss.framework.workspace.bean.dto.response.WorkspaceDepartmentVo;
+import com.webank.wedatasphere.dss.framework.workspace.bean.dto.response.WorkspaceFavoriteVo;
+import com.webank.wedatasphere.dss.framework.workspace.bean.vo.DSSWorkspaceHomePageVO;
+import com.webank.wedatasphere.dss.framework.workspace.bean.vo.DSSWorkspaceHomepageSettingVO;
+import com.webank.wedatasphere.dss.framework.workspace.bean.vo.DSSWorkspaceOverviewVO;
+import com.webank.wedatasphere.dss.framework.workspace.bean.vo.DSSWorkspacePrivVO;
+import com.webank.wedatasphere.dss.framework.workspace.bean.vo.DSSWorkspaceRoleVO;
+import com.webank.wedatasphere.dss.framework.workspace.bean.vo.DSSWorkspaceUserVO;
+import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
+import org.apache.linkis.common.exception.ErrorException;
 
 import java.util.List;
 
@@ -28,18 +39,20 @@ import java.util.List;
 public interface DSSWorkspaceService {
 
 
-    int createWorkspace(String workspaceName, String tags, String userName, String description, String department, String productName) throws ErrorException;
+    int createWorkspace(String workspaceName, String tags, String userName, String description, String department, String productName,String workspaceType) throws ErrorException;
 
-    void addWorkspaceUser(List<Integer> roleIds, int workspaceId, String userName, String creater);
 
     List<DSSWorkspace> getWorkspaces(String userName);
 
-    DSSWorkspaceHomePageVO getWorkspaceHomePage(String userName,String moduleName);
-
-    List<DSSMenu> getWorkspaceMenus(String userName, String workspaceId);
+    DSSWorkspaceHomePageVO getWorkspaceHomePage(String userName,String moduleName) throws DSSErrorException;
 
     List<DSSWorkspaceUserVO> getWorkspaceUsers(String workspaceId, String department, String username,
                                                String roleName, int pageNow, int pageSize, List<Long> total);
+
+    /**
+     * 获取空间内所有成员，已用户名返回
+     */
+    List<String> getWorkspaceUsers(String workspaceId);
 
     List<DSSWorkspaceRoleVO> getWorkspaceRoles(int workspaceId);
 
@@ -49,16 +62,31 @@ public interface DSSWorkspaceService {
 
     DSSWorkspaceHomepageSettingVO getWorkspaceHomepageSettings(int workspaceId);
 
-    String getWorkspaceName(String workspaceId);
+    String getWorkspaceName(Long workspaceId);
 
+    /**
+     * 工作空间管理员权限判断(is_admin=1的用户才拥有工作空间操作权限)
+     * @param userName
+     * @return
+     */
     boolean checkAdmin(String userName);
 
-    List<DepartmentVO> getDepartments();
+    /**
+     * 判断是否拥有该工作空间管理员权限
+     * @param workspaceId
+     * @param username
+     * @return
+     */
+    public boolean isAdminUser(Long workspaceId, String username);
+
+    List<String> getAllDepartmentWithOffices();
+
+    void associateDepartments(Long workspaceId, String departments, String roles,String user) throws DSSErrorException;
+
+    DSSWorkspaceAssociateDepartments getAssociateDepartmentsInfo(Long workspaceId);
 
     List<DSSWorkspaceUserVO> getWorkspaceUsersByRole(int workspaceId, String roleName, List<Long> totals,
                                                      int pageNow, int pageSize);
-
-    List<DSSWorkspace> getWorkspaces();
 
     Long addWorkspace(String userName, String name, String department, String label, String description);
 
@@ -66,21 +94,21 @@ public interface DSSWorkspaceService {
 
     List<WorkspaceDepartmentVo> getWorkSpaceDepartments();
 
-    List<HomepageDemoMenuVo> getHomepageDemos(boolean isChinese);
+    List<WorkspaceMenuVo> getWorkspaceAppConns(Workspace workspace, Long workspaceId,
+                                               String username, boolean isChinese) throws DSSErrorException;
 
-    List<HomepageVideoVo> getHomepageVideos(boolean isChinese);
+    DSSWorkspace getWorkspacesById(Long id, String username) throws DSSErrorException;
 
-    List<OnestopMenuVo> getWorkspaceManagements(Long workspaceId, String username, boolean isChinese);
+    DSSWorkspace getWorkspacesByName(String workspaceName, String username) throws DSSErrorException;
 
-    List<OnestopMenuVo> getWorkspaceApplications(Long workspaceId, String username, boolean isChinese);
+    List<WorkspaceFavoriteVo> getWorkspaceFavorites(Long workspaceId, String username, boolean isChinese,String type);
 
-    DSSWorkspace getWorkspacesById(Long id);
+    Long addFavorite(String username, Long workspaceId, Long menuApplicationId,String type);
 
-    List<WorkspaceFavoriteVo> getWorkspaceFavorites(Long workspaceId, String username, boolean isChinese);
-
-    Long addFavorite(String username, Long workspaceId, Long menuApplicationId);
-
-    Long deleteFavorite(String username, Long favouritesId);
+    Long deleteFavorite(String username, Long appconnId, Long workspaceId,String type);
 
 
+    boolean checkAdminByWorkspace(String username, int workspaceId);
+
+    PageInfo<DSSUserRoleComponentPriv> getAllUserPrivs(Integer currentPage, Integer pageSize);
 }

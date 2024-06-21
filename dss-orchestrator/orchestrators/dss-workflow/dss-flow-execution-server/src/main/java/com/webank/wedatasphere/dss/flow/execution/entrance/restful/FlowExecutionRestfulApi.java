@@ -17,50 +17,56 @@
 package com.webank.wedatasphere.dss.flow.execution.entrance.restful;
 
 import com.webank.wedatasphere.dss.flow.execution.entrance.FlowContext$;
+import com.webank.wedatasphere.dss.flow.execution.entrance.entity.WorkflowExecuteInfoVo;
 import com.webank.wedatasphere.dss.flow.execution.entrance.job.FlowEntranceJob;
-import com.webank.wedatasphere.linkis.entrance.EntranceServer;
-import com.webank.wedatasphere.linkis.entrance.annotation.EntranceServerBeanAnnotation;
-import com.webank.wedatasphere.linkis.protocol.utils.ZuulEntranceUtils;
-import com.webank.wedatasphere.linkis.scheduler.queue.Job;
-import com.webank.wedatasphere.linkis.server.Message;
+import com.webank.wedatasphere.dss.flow.execution.entrance.service.WorkflowExecutionInfoService;
+import org.apache.linkis.entrance.EntranceServer;
+import org.apache.linkis.protocol.utils.ZuulEntranceUtils;
+import org.apache.linkis.scheduler.queue.Job;
+import org.apache.linkis.scheduler.queue.SchedulerEventState;
+import org.apache.linkis.server.BDPJettyServerHelper;
+import org.apache.linkis.server.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import scala.Enumeration;
 import scala.Option;
 
-import javax.ws.rs.*;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
-
-@Path("/dss/flow/entrance")
-@Component
-@Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
+@RequestMapping(path = "/dss/flow/entrance")
+@RestController
 public class FlowExecutionRestfulApi {
 
     private EntranceServer entranceServer;
 
     private static final Logger logger = LoggerFactory.getLogger(FlowExecutionRestfulApi.class);
 
-    @EntranceServerBeanAnnotation.EntranceServerAutowiredAnnotation
-    public void setEntranceServer(EntranceServer entranceServer){
+    @Autowired
+    public void setEntranceServer(EntranceServer entranceServer) {
         this.entranceServer = entranceServer;
     }
 
-    @GET
-    @Path("/{id}/execution")
-    public Response execution(@PathParam("id") String id) {
+    @Autowired
+    private WorkflowExecutionInfoService workflowExecutionInfoService;
+
+    @RequestMapping(value = "/{id}/execution",method = RequestMethod.GET)
+    public Message execution(@PathVariable("id") String id,@RequestParam("labels") String labels) {
+        logger.info("Begin to get job execution info, id:{}", id);
         Message message = null;
         String realId = ZuulEntranceUtils.parseExecID(id)[3];
         Option<Job> job = entranceServer.getJob(realId);
         try {
-            if (job.isDefined() && job.get() instanceof FlowEntranceJob){
+            if (job.isDefined() && job.get() instanceof FlowEntranceJob) {
                 logger.info("Start to get job {} execution info", job.get().getId());
                 FlowEntranceJob flowEntranceJob = (FlowEntranceJob) job.get();
-
                 message = Message.ok("Successfully get job execution info");
                 message.setMethod("/api/entrance/" + id + "/execution");
                 message.setStatus(0);
@@ -70,20 +76,71 @@ public class FlowExecutionRestfulApi {
                         v.setNowTime(nowTime);
                     }
                 });
-                message.data("runningJobs", FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getRunningNodes()));
+                List<Map<String, Object>> runningJobsList = FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getRunningNodes());
+                message.data("runningJobs", runningJobsList);
+
                 List<Map<String, Object>> pendingList = FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getPendingNodes());
                 pendingList.addAll(FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getSkippedNodes()));
                 message.data("pendingJobs", pendingList);
-                message.data("succeedJobs", FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getSucceedNodes()));
-                message.data("failedJobs", FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getFailedNodes()));
-                message.data("skippedJobs", FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getSkippedNodes()));
-            }else{
+
+                List<Map<String, Object>> succeedJobsList = FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getSucceedNodes());
+                message.data("succeedJobs", succeedJobsList);
+
+                List<Map<String, Object>> failedJobsList = FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getFailedNodes());
+                message.data("failedJobs", failedJobsList);
+
+                List<Map<String, Object>> skippedJobsList = FlowContext$.MODULE$.convertView(flowEntranceJob.getFlowContext().getSkippedNodes());
+                message.data("skippedJobs", skippedJobsList);
+
+                //如果执行失败或执行成功，将执行结果存储到数据库
+                int status = getJobStatus(flowEntranceJob);
+                if (status < 2) {
+                    WorkflowExecuteInfoVo workflowExecuteInfoVo = new WorkflowExecuteInfoVo();
+                    workflowExecuteInfoVo.setTaskId(flowEntranceJob.getJobRequest().getId());
+
+                    String flowIdStr = BDPJettyServerHelper.jacksonJson().readValue(flowEntranceJob.getJobRequest().getExecutionCode(), Map.class).get("flowId").toString();
+                    String version = BDPJettyServerHelper.jacksonJson().readValue(flowEntranceJob.getJobRequest().getExecutionCode(), Map.class).get("version").toString();
+                    workflowExecuteInfoVo.setFlowId(Long.parseLong(flowIdStr));
+                    workflowExecuteInfoVo.setVersion(version);
+
+                    workflowExecuteInfoVo.setFailedJobsList(failedJobsList);
+                    workflowExecuteInfoVo.setPendingJobsList(pendingList);
+                    workflowExecuteInfoVo.setSkippedJobsList(skippedJobsList);
+                    workflowExecuteInfoVo.setRunningJobsList(runningJobsList);
+                    workflowExecuteInfoVo.setSucceedJobsList(succeedJobsList);
+                    workflowExecuteInfoVo.setCreatetime(new Date());
+                    workflowExecuteInfoVo.setStatus(status);
+                    workflowExecutionInfoService.saveExecuteInfo(workflowExecuteInfoVo);
+                }
+            } else {
                 message = Message.error("ID The corresponding job is empty and cannot obtain the corresponding task status.(ID 对应的job为空，不能获取相应的任务状态)");
             }
         } catch (Exception e) {
-            message = Message.error("Failed to get job execution info");
+            logger.error("Failed to get job execution info:", e);
+            message = Message.error("Failed to get job execution info:" + e.getMessage());
         }
-        return Message.messageToResponse(message);
+        logger.info("End to get job execution info, id:{}", id);
+        return message;
+    }
+
+    /**
+     * 获取job的状态
+     * @param flowEntranceJob
+     * @return
+     */
+    private int getJobStatus(FlowEntranceJob flowEntranceJob) {
+        Enumeration.Value state = flowEntranceJob.getState();
+        int status = 2;
+        if(SchedulerEventState.Failed().equals(state)
+                || SchedulerEventState.Cancelled().equals(state)
+                || SchedulerEventState.Timeout().equals(state)){
+            //失败
+            status = 0;
+        }else if(SchedulerEventState.Succeed().equals(state)){
+            //成功
+            status = 1;
+        }
+        return status;
     }
 
 }

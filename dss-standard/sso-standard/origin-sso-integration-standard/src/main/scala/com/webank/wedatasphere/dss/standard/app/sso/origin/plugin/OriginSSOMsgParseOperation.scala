@@ -16,29 +16,29 @@
 
 package com.webank.wedatasphere.dss.standard.app.sso.origin.plugin
 
-import com.webank.wedatasphere.dss.common.utils.IoUtils
 import com.webank.wedatasphere.dss.standard.app.sso.builder.DssMsgBuilderOperation.DSSMsg
 import com.webank.wedatasphere.dss.standard.app.sso.origin.client.HttpClient
 import com.webank.wedatasphere.dss.standard.app.sso.plugin.AbstractSSOMsgParseOperation
-import com.webank.wedatasphere.linkis.common.utils.Utils
-import com.webank.wedatasphere.linkis.httpclient.Client
-import org.apache.commons.io.IOUtils
+import com.webank.wedatasphere.dss.standard.sso.utils.ProxyUserSSOUtils
+import org.apache.linkis.common.utils.Utils
 
 
 class OriginSSOMsgParseOperation extends AbstractSSOMsgParseOperation {
 
   override protected def getUser(dssMsg: DSSMsg): String = {
     val dssUrl = dssMsg.getDSSUrl
-    val dwsHttpClient:Client=null
-    Utils.tryFinally({
     val dwsHttpClient = HttpClient.getHttpClient(dssUrl, "DSS")
-    val userInfoAction = new UserInfoAction
-    HttpClient.addCookies(dssMsg, userInfoAction)
-    dwsHttpClient.execute(userInfoAction) match {
-      case userInfoResult: UserInfoResult =>
-        userInfoResult.getUserName
-    }
-  })(IOUtils.closeQuietly(dwsHttpClient))
+    val userInfoAction = if(ProxyUserSSOUtils.existsProxyUser(dssMsg)) new ProxyUserInfoAction
+      else new UserInfoAction
+    Utils.tryFinally {
+      HttpClient.addCookies(dssMsg, userInfoAction)
+      dwsHttpClient.execute(userInfoAction) match {
+        case userInfoResult: UserInfoResult =>
+          userInfoResult.getUserName
+        case proxyUserInfoResult: ProxyUserInfoResult =>
+          ProxyUserSSOUtils.setUserAndProxyUser(proxyUserInfoResult.getUserName, proxyUserInfoResult.getProxyUser)
+      }
+    }(Utils.tryQuietly(dwsHttpClient.close()))
   }
 
 }

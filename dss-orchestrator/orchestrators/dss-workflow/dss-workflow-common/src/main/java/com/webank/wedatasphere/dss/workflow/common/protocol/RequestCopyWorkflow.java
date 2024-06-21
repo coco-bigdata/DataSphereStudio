@@ -17,33 +17,49 @@
 package com.webank.wedatasphere.dss.workflow.common.protocol;
 
 
+import com.webank.wedatasphere.dss.common.label.DSSLabel;
+import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
+
+import java.util.List;
+
 public class RequestCopyWorkflow {
    private String  userName;
-   private String  workspaceName;
+   private Workspace  workspace;
    private Long  rootFlowId;
    private String  contextIdStr;
    private String projectName;
-   private Long  orcVersionId;
-   private String  version;
+   private String  orcVersion;
    private String  description;
+   private List<DSSLabel> dssLabels;
+
+   private Long targetProjectId;
+   private String nodeSuffix;
+   private String newFlowName;
 
     public RequestCopyWorkflow(String userName,
-                               String workspaceName,
+                               Workspace workspace,
                                Long rootFlowId,
                                String contextIdStr,
                                String projectName,
-                               Long orcVersionId,
-                               String version,
-                               String description) {
+                               String orcVersion,
+                               String description,
+                               List<DSSLabel> dssLabels,
+                               Long targetProjectId,
+                               String nodeSuffix,
+                               String newFlowName) {
 
         this.userName = userName;
-        this.workspaceName = workspaceName;
+        this.workspace = workspace;
         this.rootFlowId = rootFlowId;
         this.contextIdStr = contextIdStr;
         this.projectName = projectName;
-        this.orcVersionId = orcVersionId;
-        this.version = version;
+        this.orcVersion = orcVersion;
         this.description = description;
+        this.dssLabels = dssLabels;
+        this.targetProjectId = targetProjectId;
+        this.nodeSuffix = nodeSuffix;
+        this.newFlowName = newFlowName;
+
     }
 
     public String getUserName() {
@@ -54,12 +70,12 @@ public class RequestCopyWorkflow {
         this.userName = userName;
     }
 
-    public String getWorkspaceName() {
-        return workspaceName;
+    public Workspace getWorkspace() {
+        return workspace;
     }
 
-    public void setWorkspaceName(String workspaceName) {
-        this.workspaceName = workspaceName;
+    public void setWorkspace(Workspace workspace) {
+        this.workspace = workspace;
     }
 
     public Long getRootFlowId() {
@@ -86,20 +102,12 @@ public class RequestCopyWorkflow {
         this.projectName = projectName;
     }
 
-    public Long getOrcVersionId() {
-        return orcVersionId;
+    public String getOrcVersion() {
+        return orcVersion;
     }
 
-    public void setOrcVersionId(Long orcVersionId) {
-        this.orcVersionId = orcVersionId;
-    }
-
-    public String getVersion() {
-        return version;
-    }
-
-    public void setVersion(String version) {
-        this.version = version;
+    public void setOrcVersion(String orcVersion) {
+        this.orcVersion = orcVersion;
     }
 
     public String getDescription() {
@@ -108,5 +116,37 @@ public class RequestCopyWorkflow {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public List<DSSLabel> getDssLabels() {
+        return dssLabels;
+    }
+
+    public void setDssLabels(List<DSSLabel> dssLabels) {
+        this.dssLabels = dssLabels;
+    }
+
+    public Long getTargetProjectId() {
+        return targetProjectId;
+    }
+
+    public void setTargetProjectId(Long targetProjectId) {
+        this.targetProjectId = targetProjectId;
+    }
+
+    public String getNodeSuffix() {
+        return nodeSuffix;
+    }
+
+    public void setNodeSuffix(String nodeSuffix) {
+        this.nodeSuffix = nodeSuffix;
+    }
+
+    public String getNewFlowName() {
+        return newFlowName;
+    }
+
+    public void setNewFlowName(String newFlowName) {
+        this.newFlowName = newFlowName;
     }
 }

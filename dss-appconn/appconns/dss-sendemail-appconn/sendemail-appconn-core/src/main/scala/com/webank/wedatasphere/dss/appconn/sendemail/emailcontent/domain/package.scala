@@ -16,7 +16,7 @@
 
 package com.webank.wedatasphere.dss.appconn.sendemail.emailcontent.domain
 
-import com.webank.wedatasphere.linkis.common.io.FsPath
+import org.apache.linkis.common.io.FsPath
 
 import scala.beans.BeanProperty
 
@@ -31,13 +31,21 @@ class PictureEmailContent extends ArrayEmailContent with FsPathStoreEmailContent
     setFsPath(filePath)
   }
 
+  def this(filePath: FsPath, fileType: String, fileName:String) = {
+    this()
+    setFsPath(filePath)
+    setFileType(fileType)
+    setFileName(fileName)
+  }
+
 }
 
 class HtmlEmailContent extends StringEmailContent with FsPathStoreEmailContent {
 
-  def this(filePath: FsPath) = {
+  def this(filePath: FsPath, fileType: String) = {
     this()
     setFsPath(filePath)
+    setFileType(fileType)
   }
 
 }

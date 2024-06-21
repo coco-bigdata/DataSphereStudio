@@ -19,16 +19,14 @@ package com.webank.wedatasphere.dss.framework.project.server.rpc
 import java.util
 
 import com.webank.wedatasphere.dss.common.entity.project.DSSProject
-import com.webank.wedatasphere.dss.common.protocol.project.{ProjectInfoRequest, ProjectRelationRequest, ProjectRelationResponse}
+import com.webank.wedatasphere.dss.common.protocol.project._
 import com.webank.wedatasphere.dss.framework.project.entity.DSSProjectDO
-import com.webank.wedatasphere.dss.framework.project.service.DSSProjectService
+import com.webank.wedatasphere.dss.framework.project.entity.vo.ProjectInfoVo
+import com.webank.wedatasphere.dss.framework.project.service.{DSSProjectService, DSSProjectUserService}
 import com.webank.wedatasphere.dss.framework.workspace.service.DSSWorkspaceUserService
-import com.webank.wedatasphere.dss.orchestrator.common.entity.DSSOrchestratorInfo
-import com.webank.wedatasphere.dss.orchestrator.common.protocol.RequestProjectImportOrchestrator
-import com.webank.wedatasphere.linkis.protocol.usercontrol.{RequestUserListFromWorkspace, RequestUserWorkspace, ResponseUserWorkspace, ResponseWorkspaceUserList}
-import com.webank.wedatasphere.linkis.rpc.{Receiver, Sender}
+import org.apache.linkis.protocol.usercontrol.{RequestUserListFromWorkspace, RequestUserWorkspace, ResponseUserWorkspace, ResponseWorkspaceUserList}
+import org.apache.linkis.rpc.{Receiver, Sender}
 import org.springframework.beans.BeanUtils
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Component
 
 import scala.collection.JavaConversions._
@@ -36,11 +34,9 @@ import scala.concurrent.duration.Duration
 
 
 @Component
-class ProjectReceiver(projectService: DSSProjectService) extends Receiver {
-
-  @Autowired
-  var dssWorkspaceUserService:DSSWorkspaceUserService = _
-
+class ProjectReceiver(projectService: DSSProjectService,
+                      dssWorkspaceUserService: DSSWorkspaceUserService,
+                      projectUserService: DSSProjectUserService) extends Receiver {
 
   override def receive(message: Any, sender: Sender): Unit = {
 
@@ -54,22 +50,32 @@ class ProjectReceiver(projectService: DSSProjectService) extends Receiver {
         val appConnName = projectRelationRequest.getAppconnName
         val appConnProjectId = projectService.getAppConnProjectId(dssProjectId, appConnName, dssLabels)
         new ProjectRelationResponse(dssProjectId, appConnName, dssLabels, appConnProjectId)
-      case requestUserWorkspace:RequestUserWorkspace =>
+      case projectRefIdRequest: ProjectRefIdRequest =>
+        val refProjectId = projectService.getAppConnProjectId(projectRefIdRequest.getAppInstanceId, projectRefIdRequest.getDssProjectId)
+        new ProjectRefIdResponse(projectRefIdRequest.getAppInstanceId, projectRefIdRequest.getDssProjectId, refProjectId);
+      case requestUserWorkspace: RequestUserWorkspace =>
         val userWorkspaceIds: util.List[Integer] = dssWorkspaceUserService.getUserWorkspaceIds(requestUserWorkspace.getUserName)
         new ResponseUserWorkspace(userWorkspaceIds)
 
-      case requestUserListFromWorkspace: RequestUserListFromWorkspace=>
-        val userList = requestUserListFromWorkspace.getUserWorkspaceIds.flatMap(id => dssWorkspaceUserService.getAllWorkspaceUsers(id)).distinct
+      case requestUserListFromWorkspace: RequestUserListFromWorkspace =>
+        val userList = requestUserListFromWorkspace.getUserWorkspaceIds.flatMap(id => dssWorkspaceUserService.getAllWorkspaceUsers(id.asInstanceOf[Long])).distinct
         new ResponseWorkspaceUserList(userList)
 
       case projectInfoRequest: ProjectInfoRequest =>
         val dssProjectDO: DSSProjectDO = projectService.getProjectById(projectInfoRequest.getProjectId)
-        val DSSProject = new DSSProject()
-        BeanUtils.copyProperties(dssProjectDO, DSSProject)
-        DSSProject
+        val projectInfoVo: ProjectInfoVo = projectService.getProjectInfoById(projectInfoRequest.getProjectId)
+        val dssProject = new DSSProject()
+        BeanUtils.copyProperties(dssProjectDO, dssProject)
+        dssProject.setWorkspaceId(dssProjectDO.getWorkspaceId.intValue())
+        dssProject.setWorkspaceName(projectInfoVo.getWorkspaceName)
+        dssProject
 
-      case projectImportOrchestrator: RequestProjectImportOrchestrator =>
-        projectService.importOrchestrator(projectImportOrchestrator)
+      case projectUserAuthRequest: ProjectUserAuthRequest =>
+        val projectId = projectUserAuthRequest.getProjectId
+        val userName = projectUserAuthRequest.getUserName
+        val projectDo: DSSProjectDO = projectService.getProjectById(projectId)
+        val privList = projectUserService.getProjectUserPriv(projectId, userName).map(_.getPriv)
+        new ProjectUserAuthResponse(projectId, userName, privList, projectDo.getCreateBy)
     }
   }
 

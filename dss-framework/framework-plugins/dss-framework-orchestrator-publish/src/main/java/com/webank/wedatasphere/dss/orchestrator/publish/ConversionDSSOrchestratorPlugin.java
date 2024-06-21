@@ -21,15 +21,27 @@ import com.webank.wedatasphere.dss.common.label.DSSLabel;
 import com.webank.wedatasphere.dss.orchestrator.common.protocol.ResponseOperateOrchestrator;
 import com.webank.wedatasphere.dss.orchestrator.core.plugin.DSSOrchestratorPlugin;
 import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
+
 import java.util.List;
+import java.util.Map;
 
 
 public interface ConversionDSSOrchestratorPlugin extends DSSOrchestratorPlugin {
-
+    /**
+     * 编排转化（转为具体调度形式，比如转为schedulis调度工作流）
+     * 这里只是个rpc的client简单封装。
+     * @param userName 发布人
+     * @param project 编排所属项目
+     * @param workspace 所属工作空间
+     * @param orchestrationIdMap 要发布的编排,key为编排的appId，value为编排的refOrchestrationId
+     * @param dssLabels 标签
+     * @param approvalId 审批单号，如果不需要，可以传null
+     * @return
+     */
     ResponseOperateOrchestrator convert(String userName,
-        DSSProject project,
-        Workspace workspace,
-        List<Long> orcAppIdList,
-        List<DSSLabel> dssLabels);
-
+                                        DSSProject project,
+                                        Workspace workspace,
+                                        Map<Long, Long> orchestrationIdMap,
+                                        List<DSSLabel> dssLabels,
+                                        String approvalId);
 }

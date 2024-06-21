@@ -18,6 +18,8 @@ package com.webank.wedatasphere.dss.orchestrator.publish;
 
 import com.webank.wedatasphere.dss.common.exception.DSSErrorException;
 import com.webank.wedatasphere.dss.common.label.DSSLabel;
+import com.webank.wedatasphere.dss.orchestrator.common.entity.DSSOrchestratorVersion;
+import com.webank.wedatasphere.dss.orchestrator.common.protocol.RequestImportOrchestrator;
 import com.webank.wedatasphere.dss.orchestrator.core.plugin.DSSOrchestratorPlugin;
 import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
 import com.webank.wedatasphere.dss.standard.common.exception.operation.ExternalOperationFailedException;
@@ -29,26 +31,14 @@ public interface ImportDSSOrchestratorPlugin extends DSSOrchestratorPlugin {
 
     /**
      * 导入Orchestrator
-     * @param userName 用户名
-     * @param workspaceName 工作空间名
-     * @param projectName 工程名
-     * @param projectId 工程id
-     * @param resourceId bml resourceId
-     * @param version bml version
-     * @param dssLabels dss标签
-     * @param workspace
+     * 注意：导入导出接口只适合于不同环境下，先从A环境导出工作流，再导入到B环境的情况。
+     * 不适合用于在同一环境下的复制。同一环境的复制操作需使用copyOperation。
+     * @param requestImportOrchestrator
      * @return
      * @throws DSSErrorException
      * @throws IOException
      * @throws ExternalOperationFailedException
      */
-    Long importOrchestrator(String userName,
-        String workspaceName,
-        String projectName,
-        Long projectId,
-        String resourceId,
-        String version,
-        List<DSSLabel> dssLabels,
-        Workspace workspace) throws Exception;
+    DSSOrchestratorVersion importOrchestrator(RequestImportOrchestrator requestImportOrchestrator) throws Exception;
 
 }

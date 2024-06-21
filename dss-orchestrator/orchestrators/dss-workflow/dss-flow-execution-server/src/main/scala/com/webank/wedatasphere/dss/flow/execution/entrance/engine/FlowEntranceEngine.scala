@@ -23,9 +23,10 @@ import com.webank.wedatasphere.dss.flow.execution.entrance.execution.FlowExecuti
 import com.webank.wedatasphere.dss.flow.execution.entrance.job.parser.FlowEntranceJobParser
 import com.webank.wedatasphere.dss.flow.execution.entrance.job.{FlowEntranceJob, FlowExecutionRequest}
 import com.webank.wedatasphere.dss.flow.execution.entrance.resolver.FlowDependencyResolver
-import com.webank.wedatasphere.linkis.common.utils.{Logging, Utils}
-import com.webank.wedatasphere.linkis.scheduler.executer.ExecutorState.ExecutorState
-import com.webank.wedatasphere.linkis.scheduler.executer._
+import org.apache.commons.lang.exception.ExceptionUtils
+import org.apache.linkis.common.utils.{Logging, Utils}
+import org.apache.linkis.scheduler.executer.ExecutorState.ExecutorState
+import org.apache.linkis.scheduler.executer._
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Component
 
@@ -70,8 +71,12 @@ class FlowEntranceEngine extends Executor with ConcurrentTaskOperateSupport with
                   for (flowParser <- flowParsers) {
                     flowParser.parse(job)
                   }
-                }{ t =>
-                   throw new FlowExecutionErrorException(90101, s"Failed to parser flow of job(${job.getId})", t)
+                } { t =>
+                  if (t.isInstanceOf[FlowExecutionErrorException]) {
+                    throw t
+                  } else {
+                    throw new FlowExecutionErrorException(90101, s"Failed to parser flow of job(${job.getId})", t)
+                  }
                 }
               }
               this.SUBMIT_JOB_LOCK.synchronized {
@@ -81,6 +86,7 @@ class FlowEntranceEngine extends Executor with ConcurrentTaskOperateSupport with
                 flowExecution.runJob(job)
               }
             } { t =>
+              job.printLog(s"execute job failed: "+ExceptionUtils.getRootCauseMessage(t), "ERROR")
               job.kill()
               error(s"Failed to execute job: ${job.getId}", t)
             }

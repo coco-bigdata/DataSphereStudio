@@ -17,16 +17,17 @@
 package com.webank.wedatasphere.dss.appconn.sendemail.emailcontent.parser
 
 import java.lang.reflect.{ParameterizedType, Type}
+import java.util
 
 import com.webank.wedatasphere.dss.appconn.sendemail.email.Email
 import com.webank.wedatasphere.dss.appconn.sendemail.email.domain.MultiContentEmail
 import com.webank.wedatasphere.dss.appconn.sendemail.emailcontent.domain.FsPathStoreEmailContent
 import com.webank.wedatasphere.dss.appconn.sendemail.emailcontent.{EmailContent, EmailContentParser}
-import com.webank.wedatasphere.linkis.common.io.resultset.ResultSetReader
-import com.webank.wedatasphere.linkis.common.io.{MetaData, Record}
-import com.webank.wedatasphere.linkis.common.utils.Utils
-import com.webank.wedatasphere.linkis.storage.LineRecord
-import com.webank.wedatasphere.linkis.storage.resultset.ResultSetReader
+import org.apache.linkis.common.io.resultset.ResultSetReader
+import org.apache.linkis.common.io.{MetaData, Record}
+import org.apache.linkis.common.utils.Utils
+import org.apache.linkis.storage.LineRecord
+import org.apache.linkis.storage.resultset.ResultSetReaderFactory
 import org.apache.commons.io.IOUtils
 
 abstract class AbstractEmailContentParser[T] extends EmailContentParser {
@@ -41,8 +42,8 @@ abstract class AbstractEmailContentParser[T] extends EmailContentParser {
     case _ =>
   }
 
-  protected def getResultSetReader(fsPathStore: FsPathStoreEmailContent): ResultSetReader[_ <: MetaData, _ <: Record] = {
-    val reader = ResultSetReader.getResultSetReader(fsPathStore.getFsPath.getSchemaPath)
+  protected def getResultSetReader(fsPathStore: FsPathStoreEmailContent): ResultSetReader[_, _ ] = {
+    val reader = ResultSetReaderFactory.getResultSetReader(fsPathStore.getFsPath.getSchemaPath)
     reader.getMetaData
     reader
   }
@@ -53,6 +54,19 @@ abstract class AbstractEmailContentParser[T] extends EmailContentParser {
     else Utils.tryFinally(reader.getRecord match {
       case record: LineRecord => Option(record.getLine)
     })(IOUtils.closeQuietly(reader))
+  }
+
+  protected def getLineRecord(fsPathStore: FsPathStoreEmailContent): Option[String] = {
+    val reader = getResultSetReader(fsPathStore)
+    val result = new util.ArrayList[String]
+    Utils.tryFinally(
+      while (reader.hasNext) {
+        reader.getRecord match {
+          case record: LineRecord => result.add(record.getLine)
+        }
+      }
+    ) (IOUtils.closeQuietly(reader))
+    Option.apply(String.join("",result))
   }
 
   protected def getEmailContentClass: Type = getClass.getGenericSuperclass match {

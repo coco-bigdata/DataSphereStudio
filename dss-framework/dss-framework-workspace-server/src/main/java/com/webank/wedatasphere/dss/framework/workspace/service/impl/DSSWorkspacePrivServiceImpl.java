@@ -39,21 +39,26 @@ public class DSSWorkspacePrivServiceImpl implements DSSWorkspacePrivService {
         pairs.forEach(pair -> {
             int roleId = pair.getKey();
             int priv = pair.getValue() ? 1 : 0;
-            dssWorkspacePrivMapper.updateRoleMenuPriv(workspaceId, menuId, roleId, priv);
+            int count = dssWorkspacePrivMapper.queryCntOfMenuRolePriv(workspaceId, menuId, roleId);
+            if (count >= 1) {
+                dssWorkspacePrivMapper.updateRoleMenuPriv(workspaceId, menuId, roleId, priv);
+            } else {
+                dssWorkspacePrivMapper.insertMenuRolePriv(workspaceId, menuId, roleId, priv, updater);
+            }
         });
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateRoleComponentPriv(int workspaceId, int componentId, String username, List<Pair<Integer, Boolean>> pairs) {
+    public void updateRoleComponentPriv(int workspaceId, int appconnId, String username, List<Pair<Integer, Boolean>> pairs) {
         pairs.forEach(pair -> {
             int roleId = pair.getKey();
             int priv = pair.getValue() ? 1 : 0;
-            int count = dssWorkspacePrivMapper.queryCntOfRCP(workspaceId, componentId, roleId);
+            int count = dssWorkspacePrivMapper.queryCntOfRCP(workspaceId, appconnId, roleId);
             if (count >= 1) {
-                dssWorkspacePrivMapper.updateRoleComponentPriv(workspaceId, componentId, roleId, priv);
-            }else {
-                dssWorkspacePrivMapper.insertRolComponentPriv(workspaceId, componentId, roleId, priv);
+                dssWorkspacePrivMapper.updateRoleComponentPriv(workspaceId, appconnId, roleId, priv);
+            } else {
+                dssWorkspacePrivMapper.insertRolComponentPriv(workspaceId, appconnId, roleId, priv, username);
             }
         });
     }

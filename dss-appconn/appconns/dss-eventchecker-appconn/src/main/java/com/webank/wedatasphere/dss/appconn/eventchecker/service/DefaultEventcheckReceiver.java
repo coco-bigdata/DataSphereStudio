@@ -19,11 +19,12 @@ package com.webank.wedatasphere.dss.appconn.eventchecker.service;
 
 
 import org.apache.commons.lang3.time.DateFormatUtils;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
 
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Properties;
 
@@ -53,13 +54,14 @@ public class DefaultEventcheckReceiver extends AbstractEventCheckReceiver {
         try{
             String lastMsgId = getOffset(jobId,props,log);
             String[] executeType = createExecuteType(jobId,props,log,lastMsgId);
-            if(executeType!=null && executeType.length ==3){
+            log.info("event receiver executeType[]:{},{},{},{},{}",executeType[0],executeType[1],executeType[2],executeType[3],executeType[4]);
+            if(executeType!=null && executeType.length ==5){
                 String[] consumedMsgInfo = getMsg(props, log,executeType);
                 if(consumedMsgInfo!=null && consumedMsgInfo.length == 4){
                     result = updateMsgOffset(jobId,props,log,consumedMsgInfo,lastMsgId);
                 }
             }else{
-                log.error("executeType error {} " + executeType.toString());
+                log.error("executeType error {} " + Arrays.toString(executeType));
                 return result;
             }
         }catch (Exception e){
@@ -72,35 +74,21 @@ public class DefaultEventcheckReceiver extends AbstractEventCheckReceiver {
     private String[] createExecuteType(int jobId, Properties props, Logger log,String lastMsgId){
         boolean receiveTodayFlag = (null != receiveToday && "true".equals(receiveToday.trim().toLowerCase()));
         boolean afterSendFlag = (null != afterSend && "true".equals(afterSend.trim().toLowerCase()));
+        //只有receiveTodayFlag为true时，useRunDateFlag才有意义。
+        Boolean useRunDateFlag = receiveTodayFlag && (null == useRunDate || "true".equalsIgnoreCase(useRunDate.trim()));
         String[] executeType = null;
         try {
-            if ("0".equals(lastMsgId)){
-                if(receiveTodayFlag){
-                    if(afterSendFlag){
-                        executeType = new String[]{nowStartTime,todayEndTime,"0"};
-                    }else{
-                        executeType = new String[]{todayStartTime,todayEndTime,"0"};
-                    }
-                }else{
-                    if(afterSendFlag){
-                        executeType = new String[]{nowStartTime,allEndTime,"0"};
-                    }else{
-                        executeType = new String[]{allStartTime,allEndTime,"0"};
-                    }
+            if (receiveTodayFlag && !useRunDateFlag) {
+                if (afterSendFlag) {
+                    executeType = new String[]{nowStartTime, todayEndTime, lastMsgId, useRunDateFlag.toString(), runDate};
+                } else {
+                    executeType = new String[]{todayStartTime, todayEndTime, lastMsgId, useRunDateFlag.toString(), runDate};
                 }
-            }else{
-                if(receiveTodayFlag){
-                    if(afterSendFlag){
-                        executeType = new String[]{nowStartTime,todayEndTime,lastMsgId};
-                    }else{
-                        executeType = new String[]{todayStartTime,todayEndTime,lastMsgId};
-                    }
-                }else{
-                    if(afterSendFlag){
-                        executeType = new String[]{nowStartTime,allEndTime,lastMsgId};
-                    }else{
-                        executeType = new String[]{allStartTime,allEndTime,lastMsgId};
-                    }
+            } else {
+                if (afterSendFlag) {
+                    executeType = new String[]{nowStartTime, allEndTime, lastMsgId, useRunDateFlag.toString(), runDate};
+                } else {
+                    executeType = new String[]{allStartTime, allEndTime, lastMsgId, useRunDateFlag.toString(), runDate};
                 }
             }
         }catch(Exception e){
@@ -113,7 +101,7 @@ public class DefaultEventcheckReceiver extends AbstractEventCheckReceiver {
         String waitForTime = wait_for_time;
         String formatWaitForTime = DateFormatUtils.format(new Date(),"yyyy-MM-dd " + waitForTime + ":00");
         DateFormat fmt =new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        Date targetWaitTime = null;
+        Date targetWaitTime = new Date();
         try {
             targetWaitTime = fmt.parse(formatWaitForTime);
         } catch (ParseException e) {

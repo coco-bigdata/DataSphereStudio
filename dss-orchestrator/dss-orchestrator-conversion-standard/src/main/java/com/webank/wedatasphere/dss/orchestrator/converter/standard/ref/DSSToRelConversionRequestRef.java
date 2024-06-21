@@ -17,8 +17,41 @@
 package com.webank.wedatasphere.dss.orchestrator.converter.standard.ref;
 
 
-public interface DSSToRelConversionRequestRef extends ConversionRequestRef {
+import com.webank.wedatasphere.dss.common.entity.project.DSSProject;
+import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
 
-    String getUserName();
+public interface DSSToRelConversionRequestRef<R extends DSSToRelConversionRequestRef<R>>
+        extends ConversionRequestRef {
+
+    R setUserName(String userName);
+
+    R setWorkspace(Workspace workspace);
+
+    default DSSProject getDSSProject() {
+        return (DSSProject) getParameter("dssProject");
+    }
+
+    default R setDSSProject(DSSProject dssProject) {
+        setParameter("dssProject", dssProject);
+        return (R) this;
+    }
+    /**
+     * some schedule system need approval id
+     * @return
+     */
+    default String getApprovalId() {
+        return (String) getParameter("approvalId");
+    }
+
+    default R setApprovalId(String approvalId) {
+        setParameter("approvalId", approvalId);
+        return (R) this;
+    }
+
+    class ProjectToRelConversionRequestRefImpl extends DSSToRelConversionRequestRefImpl<ProjectToRelConversionRequestRefImpl>
+        implements ProjectToRelConversionRequestRef<ProjectToRelConversionRequestRefImpl> {}
+
+    class OrchestrationToRelConversionRequestRefImpl extends DSSToRelConversionRequestRefImpl<OrchestrationToRelConversionRequestRefImpl>
+        implements OrchestrationToRelConversionRequestRef<OrchestrationToRelConversionRequestRefImpl> {}
 
 }

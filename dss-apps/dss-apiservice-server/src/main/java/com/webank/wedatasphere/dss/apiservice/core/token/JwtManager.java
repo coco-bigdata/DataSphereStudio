@@ -19,7 +19,7 @@ package com.webank.wedatasphere.dss.apiservice.core.token;
 import com.sun.jersey.core.util.Base64;
 import com.webank.wedatasphere.dss.apiservice.core.config.ApiServiceConfiguration;
 import com.webank.wedatasphere.dss.apiservice.core.bo.ApiServiceToken;
-import com.webank.wedatasphere.linkis.common.conf.CommonVars$;
+import org.apache.linkis.common.conf.CommonVars$;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
@@ -29,7 +29,6 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.SignatureException;
 import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.impl.crypto.MacProvider;
-import org.mortbay.log.Log;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javax.crypto.SecretKey;
@@ -71,7 +70,6 @@ public class JwtManager {
     public static SecretKey generalKey() {
         byte[] encodedKey = Base64.decode(JWT_SECERT);
         SecretKey key = new SecretKeySpec(encodedKey, 0, encodedKey.length, "AES");
-        Log.info("token key str:"+key.toString());
         return key;
     }
 

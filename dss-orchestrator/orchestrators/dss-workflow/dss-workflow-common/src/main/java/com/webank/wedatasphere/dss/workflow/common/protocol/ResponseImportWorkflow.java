@@ -17,20 +17,24 @@
 package com.webank.wedatasphere.dss.workflow.common.protocol;
 
 import com.webank.wedatasphere.dss.common.protocol.JobStatus;
+import com.webank.wedatasphere.dss.workflow.common.entity.DSSFlow;
 
 import java.util.List;
+
 
 
 public class ResponseImportWorkflow {
 
 
     private JobStatus status;
+    /**
+     * the key of this map is workflow id, and value is json content.
+      */
+    private List<DSSFlow> workflows;
 
-    private List<Long> workflowIds;
-
-    public ResponseImportWorkflow(JobStatus status, List<Long> workflowIds) {
+    public ResponseImportWorkflow(JobStatus status, List<DSSFlow> workflows) {
         this.status = status;
-        this.workflowIds = workflowIds;
+        this.workflows = workflows;
     }
 
     public JobStatus getStatus() {
@@ -41,11 +45,11 @@ public class ResponseImportWorkflow {
         this.status = status;
     }
 
-    public List<Long> getWorkflowIds() {
-        return workflowIds;
+    public List<DSSFlow> getWorkflows() {
+        return workflows;
     }
 
-    public void setWorkflowIds(List<Long> workflowIds) {
-        this.workflowIds = workflowIds;
+    public void setWorkflows(List<DSSFlow> workflows) {
+        this.workflows = workflows;
     }
 }

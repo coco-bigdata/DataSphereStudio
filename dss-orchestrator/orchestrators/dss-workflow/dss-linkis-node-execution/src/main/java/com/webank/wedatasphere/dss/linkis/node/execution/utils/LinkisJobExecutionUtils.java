@@ -21,20 +21,15 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.webank.wedatasphere.dss.linkis.node.execution.conf.LinkisJobExecutionConfiguration;
 import com.webank.wedatasphere.dss.linkis.node.execution.entity.BMLResource;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
 
-
 public class LinkisJobExecutionUtils {
-
-
 
     public final static  Gson gson = new GsonBuilder().setDateFormat("yyyy-MM-dd'T'HH:mm:ssZ").create();
 
     public final static Gson gson1 = new GsonBuilder().disableHtmlEscaping().setDateFormat("yyyy-MM-dd'T'HH:mm:ssZ").create();
-
-
 
     public static BMLResource getBMLResourceByJson(String json){
         return gson.fromJson(json, BMLResource.class);
@@ -47,15 +42,10 @@ public class LinkisJobExecutionUtils {
         return gson.fromJson(json,new TypeToken<List<BMLResource>>() {}.getType());
     }
 
-
     public static Boolean isCommonAppConnJob(String engineType){
-
-        return  LinkisJobExecutionConfiguration.APPCONN.equalsIgnoreCase(engineType);
-
+        return  LinkisJobExecutionConfiguration.APPCONN.equalsIgnoreCase(engineType) || engineType.equalsIgnoreCase("appjoint");
     }
 
     public static final Integer IDX_FOR_LOG_TYPE_ALL = 3;// 0: Error 1: WARN 2:INFO 3: ALL
-
-
-
 }
+

@@ -20,7 +20,7 @@ source ~/.bash_profile
 
 export local_host="`hostname --fqdn`"
 
-ipaddr=$(ip addr | awk '/^[0-9]+: / {}; /inet.*global/ {print gensub(/(.*)\/(.*)/, "\\1", "g", $2)}')
+#ipaddr=$(ip addr | awk '/^[0-9]+: / {}; /inet.*global/ {print gensub(/(.*)\/(.*)/, "\\1", "g", $2)}')
 
 function isLocal(){
     if [ "$1" == "127.0.0.1" ];then
@@ -31,8 +31,8 @@ function isLocal(){
         return 0
     elif [ "$1" == $local_host ]; then
         return 0
-    elif [ "$1" == $ipaddr ]; then
-        return 0
+    #elif [ "$1" == $ipaddr ]; then
+     #   return 0
     fi
         return 1
 }
@@ -161,21 +161,13 @@ status()
 }
 
 function setServerName(){
-  if [[ $PROJECT_NAME == *"project"* ]]; then
-		SERVER_NAME=dss-framework-project-server
-	elif [[ $PROJECT_NAME == *"orchestrator"* ]]; then
-		SERVER_NAME=dss-framework-orchestrator-server
-  elif [[ $PROJECT_NAME == *"apiservice"* ]]; then
-		SERVER_NAME=dss-apiservice-server
-	elif [[ $PROJECT_NAME == *"datapipe"* ]]; then
-		SERVER_NAME=dss-datapipe-server
-	elif [[ $PROJECT_NAME == *"workflow"* ]]; then
-		SERVER_NAME=dss-workflow-server
-	elif [[ $PROJECT_NAME == *"execution"* ]]; then
-		SERVER_NAME=dss-flow-execution-server
+	if [[ $PROJECT_NAME == *"dss-server"* ]]; then
+		SERVER_NAME=dss-server
+	elif [[ $PROJECT_NAME == *"apps"* ]]; then
+		SERVER_NAME=dss-apps-server
   else
-		echo "please input： sh dss-daemon.sh [start,restart,stop] [server name]; for example : sh dss-daemon.sh restart project "
-		echo "server name :  project、orchestrator、apiservice、datapipe、workflow、execution"
+		echo "please input： sh dss-daemon.sh [start,restart,stop] [server name]; for example : sh dss-daemon.sh restart dss-server "
+		echo "server name :  dss-server、apps-server"
 		exit 1
 	fi
 }

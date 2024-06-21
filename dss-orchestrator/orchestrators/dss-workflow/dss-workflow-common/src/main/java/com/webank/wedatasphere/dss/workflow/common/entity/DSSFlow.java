@@ -31,10 +31,10 @@ public class DSSFlow implements Flow {
     private String creator;
     private Boolean isRootFlow;
     private Integer rank;
-    private Long projectID;
-    private String  linkedAppConnNames;
-    private String  dssLabels;
-
+    private Long projectId;
+    private String linkedAppConnNames;
+    private String dssLabels;
+    private String flowEditLock;//工作流编辑锁
     /**
      * 0disable 1 enable  0表示工作流从来没存过，发布的时候忽略
      */
@@ -46,6 +46,28 @@ public class DSSFlow implements Flow {
     private String resourceId;
 
     private String bmlVersion;
+
+    private String metrics;
+    /**
+     * 工作流内（包括子工作流）的Tuple(flowId,templateId) 二元组。templateId是参数模板的id
+     */
+    private List<String[]> flowIdParamConfTemplateIdTuples;
+
+    public List<String[]> getFlowIdParamConfTemplateIdTuples() {
+        return flowIdParamConfTemplateIdTuples;
+    }
+
+    public void setFlowIdParamConfTemplateIdTuples(List<String[]> flowIdParamConfTemplateIdTuples) {
+        this.flowIdParamConfTemplateIdTuples = flowIdParamConfTemplateIdTuples;
+    }
+
+    public String getMetrics() {
+        return metrics;
+    }
+
+    public void setMetrics(String metrics) {
+        this.metrics = metrics;
+    }
 
     public String getFlowJson() {
         return flowJson;
@@ -118,7 +140,7 @@ public class DSSFlow implements Flow {
     }
 
     public void addChildren(DSSFlow children) {
-        if (this.children == null){
+        if (this.children == null) {
             this.children = new ArrayList<>();
         }
         this.children.add(children);
@@ -180,12 +202,12 @@ public class DSSFlow implements Flow {
         this.creator = creator;
     }
 
-    public Long getProjectID() {
-        return projectID;
+    public Long getProjectId() {
+        return projectId;
     }
 
-    public void setProjectID(Long projectID) {
-        this.projectID = projectID;
+    public void setProjectId(Long projectId) {
+        this.projectId = projectId;
     }
 
     public Boolean getHasSaved() {
@@ -218,5 +240,39 @@ public class DSSFlow implements Flow {
 
     public void setDssLabels(String dssLabels) {
         this.dssLabels = dssLabels;
+    }
+
+    public String getFlowEditLock() {
+        return flowEditLock;
+    }
+
+    public void setFlowEditLock(String flowEditLock) {
+        this.flowEditLock = flowEditLock;
+    }
+
+    @Override
+    public String toString() {
+        return "DSSFlow{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", state=" + state +
+                ", source='" + source + '\'' +
+                ", description='" + description + '\'' +
+                ", createTime=" + createTime +
+                ", creator='" + creator + '\'' +
+                ", isRootFlow=" + isRootFlow +
+                ", rank=" + rank +
+                ", projectId=" + projectId +
+                ", linkedAppConnNames='" + linkedAppConnNames + '\'' +
+                ", dssLabels='" + dssLabels + '\'' +
+                ", flowEditLock='" + flowEditLock + '\'' +
+                ", hasSaved=" + hasSaved +
+                ", uses='" + uses + '\'' +
+                ", children=" + children +
+                ", flowType='" + flowType + '\'' +
+                ", resourceId='" + resourceId + '\'' +
+                ", bmlVersion='" + bmlVersion + '\'' +
+                ", flowJson='" + flowJson + '\'' +
+                '}';
     }
 }

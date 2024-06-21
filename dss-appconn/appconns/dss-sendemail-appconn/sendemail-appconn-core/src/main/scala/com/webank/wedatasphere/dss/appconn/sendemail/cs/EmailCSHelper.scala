@@ -16,15 +16,20 @@
 
 package com.webank.wedatasphere.dss.appconn.sendemail.cs
 
+
+import java.util
+
+import com.google.gson.internal.LinkedTreeMap
 import com.webank.wedatasphere.dss.appconn.sendemail.exception.EmailSendFailedException
 import com.webank.wedatasphere.dss.standard.app.development.listener.core.ExecutionRequestRefContext
-import com.webank.wedatasphere.linkis.common.utils.Logging
-import com.webank.wedatasphere.linkis.cs.client.service.LinkisJobDataServiceImpl
-import com.webank.wedatasphere.linkis.cs.client.utils.{ContextServiceUtils, SerializeHelper}
-import com.webank.wedatasphere.linkis.cs.common.entity.enumeration.{ContextScope, ContextType}
-import com.webank.wedatasphere.linkis.cs.common.entity.source.CommonContextKey
-import com.webank.wedatasphere.linkis.cs.common.utils.CSCommonUtils
-import com.webank.wedatasphere.linkis.server.JSONUtils
+import org.apache.linkis.common.utils.Logging
+import org.apache.linkis.cs.client.service.LinkisJobDataServiceImpl
+import org.apache.linkis.cs.client.utils.{ContextServiceUtils, SerializeHelper}
+import org.apache.linkis.cs.common.entity.enumeration.{ContextScope, ContextType}
+import org.apache.linkis.cs.common.entity.source.CommonContextKey
+import org.apache.linkis.cs.common.utils.CSCommonUtils
+import org.apache.linkis.server.JSONUtils
+import org.springframework.util.CollectionUtils
 
 import scala.collection.JavaConversions._
 
@@ -56,5 +61,17 @@ object EmailCSHelper extends Logging{
     }
     info(s"Job IDs is ${jobIds.toList}.")
     jobIds
+  }
+
+  def getJobTypes(refContext: ExecutionRequestRefContext):util.ArrayList[String] = {
+    val jobTypes = new util.ArrayList[String]()
+    getJobIds(refContext).foreach { jobId =>
+      jobTypes.add(refContext.fetchLinkisJob(jobId).getParams.get("labels").asInstanceOf[LinkedTreeMap[_,_]].get("codeType").toString)
+    }
+    if (CollectionUtils.isEmpty(jobTypes)) {
+      throw new EmailSendFailedException(80003 ,"empty result set is not allowed")
+    }
+    info(s"Job Types is $jobTypes.")
+    jobTypes
   }
 }

@@ -18,13 +18,6 @@ package com.webank.wedatasphere.dss.common.protocol
 
 import com.webank.wedatasphere.dss.common.label.DSSLabel
 
-
-/**
- * Created by v_wbjftang on 2019/11/8.
- */
-
-
-
 case class ResponseCreateOrchestrator(orchestratorId: Long,
                                       orchestratorVersionId: Long)
 
@@ -32,7 +25,7 @@ case class ResponseExportOrchestrator(resourceId: String,
                                       version: String,
                                       orcVersionId: Long)
 
-case class ResponseImportOrchestrator(orcId: Long)
+case class ResponseImportOrchestrator(orcId: Long,version:String)
 
 case class RequestUpdateWorkflow(userName: String,
                                  flowID: Long,
@@ -54,6 +47,10 @@ case class RequestExportWorkflow(userName: String,
 case class ResponseExportWorkflow(resourceId: String, version: String, flowID: Long)
 
 case class RequestQueryWorkFlow(userName: String, rootFlowId: Long)
+
+case class ProxyUserCheckRequest(userName: String, proxyUser: String)
+
+case class ResponseProxyUserCheck(canProxy: Boolean,proxyUserList:java.util.List[String])
 
 
 

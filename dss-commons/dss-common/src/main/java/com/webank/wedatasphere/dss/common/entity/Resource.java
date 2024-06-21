@@ -17,6 +17,7 @@
 package com.webank.wedatasphere.dss.common.entity;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 public class Resource implements Serializable {
     private String fileName;
@@ -47,12 +48,30 @@ public class Resource implements Serializable {
         this.version = version;
     }
 
-/*    @Override
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        Resource resource = (Resource) o;
+        return resourceId.equals(resource.resourceId) &&
+                version.equals(resource.version);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(resourceId, version);
+    }
+
+    @Override
     public String toString() {
-        return "{" +
+        return "Resource{" +
                 "fileName='" + fileName + '\'' +
                 ", resourceId='" + resourceId + '\'' +
                 ", version='" + version + '\'' +
                 '}';
-    }*/
+    }
 }

@@ -17,12 +17,14 @@
 package com.webank.wedatasphere.dss.appconn.eventchecker.entity;
 
 import com.google.gson.Gson;
+import com.webank.wedatasphere.dss.appconn.eventchecker.service.EventCheckerService;
 import com.webank.wedatasphere.dss.appconn.eventchecker.cs.CSEventReceiverHelper;
 import com.webank.wedatasphere.dss.appconn.eventchecker.execution.EventCheckerExecutionAction;
-import com.webank.wedatasphere.dss.appconn.eventchecker.service.EventCheckerService;
 import com.webank.wedatasphere.dss.standard.app.development.listener.common.RefExecutionState;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -43,19 +45,20 @@ public class EventChecker implements Runnable{
 	public final static String SAVE_KEY="msg.savekey";
 	public final static String USER_TIME="msg.init.querytime";
 	public final static String TODAY="only.receive.today";
+	public final static String USE_RUN_DATE ="msg.receive.use.rundate";
 	public final static String AFTERSEND="msg.after.send";
 
 	private Properties p;
 	private String jobId;
 	private int execId;
 	private EventCheckerService wbDao=null;
-	EventCheckerExecutionAction backAction = null;
+	private EventCheckerExecutionAction backAction = null;
 	public Long maxWaitTime;
 	public int queryFrequency;
 
 	private static Pattern pattern = Pattern.compile("[a-zA-Z_0-9@\\-]+");
 
-	private static final Logger logger = Logger.getRootLogger();
+	private static final org.slf4j.Logger logger = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
 
 	public EventChecker(Properties p, EventCheckerExecutionAction action) {
 		this.p = p;
@@ -128,7 +131,7 @@ public class EventChecker implements Runnable{
 
 	}
 
-	public  boolean   receiveMsg(){
+	public boolean receiveMsg(){
 		boolean success = false;
 		if(p.getProperty(MSGTYPE).equals("RECEIVE")) {
 			if (checkParamMap(p, RECEIVER)) {

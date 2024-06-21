@@ -22,14 +22,14 @@ import com.webank.wedatasphere.dss.flow.execution.entrance.node.NodeExecutionSta
 import com.webank.wedatasphere.dss.flow.execution.entrance.node.{NodeExecutionState, NodeRunner}
 import com.webank.wedatasphere.dss.flow.execution.entrance.{FlowContext, FlowContextImpl}
 import com.webank.wedatasphere.dss.workflow.core.entity.{Workflow, WorkflowNode}
-import com.webank.wedatasphere.linkis.common.log.LogUtils
-import com.webank.wedatasphere.linkis.common.utils.Utils
-import com.webank.wedatasphere.linkis.entrance.execute.StorePathExecuteRequest
-import com.webank.wedatasphere.linkis.entrance.job.EntranceExecutionJob
-import com.webank.wedatasphere.linkis.entrance.persistence.PersistenceManager
-import com.webank.wedatasphere.linkis.scheduler.executer.{ErrorExecuteResponse, ExecuteRequest, SuccessExecuteResponse}
-import com.webank.wedatasphere.linkis.scheduler.queue.SchedulerEventState.Running
-import com.webank.wedatasphere.linkis.scheduler.queue.{Job, SchedulerEventState}
+import org.apache.linkis.common.log.LogUtils
+import org.apache.linkis.common.utils.Utils
+import org.apache.linkis.entrance.execute.StorePathExecuteRequest
+import org.apache.linkis.entrance.job.EntranceExecutionJob
+import org.apache.linkis.entrance.persistence.PersistenceManager
+import org.apache.linkis.scheduler.executer.{ErrorExecuteResponse, ExecuteRequest, SuccessExecuteResponse}
+import org.apache.linkis.scheduler.queue.SchedulerEventState.Running
+import org.apache.linkis.scheduler.queue.{Job, SchedulerEventState}
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
@@ -137,7 +137,7 @@ class FlowEntranceJob(persistManager:PersistenceManager) extends EntranceExecuti
     if(! SchedulerEventState.isCompleted(this.getState)){
       super.kill()
       Utils.tryAndWarn(this.killNodes)
-      transitionCompleted(ErrorExecuteResponse(s"execute job(${getId}) failed!", new FlowExecutionErrorException(90101, s"This Flow killed by user") ))
+      Utils.tryAndWarn(transitionCompleted(ErrorExecuteResponse(s"execute job(${getId}) failed!", new FlowExecutionErrorException(90101, s"This Flow killed by user"))))
     }
   }
 
@@ -145,7 +145,7 @@ class FlowEntranceJob(persistManager:PersistenceManager) extends EntranceExecuti
       if(! SchedulerEventState.isCompleted(this.getState)){
         Utils.tryAndWarn(this.killNodes)
         super.cancel()
-        transitionCompleted(ErrorExecuteResponse(s"cancel job(${getId}) execution!", new FlowExecutionErrorException(90101, s"This Flow killed by user") ))
+        Utils.tryAndWarn(transitionCompleted(ErrorExecuteResponse(s"cancel job(${getId}) execution!", new FlowExecutionErrorException(90101, s"This Flow killed by user"))))
       }
   }
 
@@ -165,7 +165,7 @@ class FlowEntranceJob(persistManager:PersistenceManager) extends EntranceExecuti
     val runners = new ArrayBuffer[NodeRunner]()
     runners.addAll(this.getFlowContext.getRunningNodes.values())
     for (node <- runners) {
-      node.cancel()
+      Utils.tryAndWarn(node.cancel())
     }
 
 

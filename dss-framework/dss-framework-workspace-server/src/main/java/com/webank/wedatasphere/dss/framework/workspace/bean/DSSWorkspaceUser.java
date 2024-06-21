@@ -21,13 +21,55 @@ import java.util.Date;
 
 public class DSSWorkspaceUser {
 
+    private Long id;
+
     private String username;
 
     private int workspaceId;
 
+    private String workspaceName;
+
     private String creator;
 
     private Date joinTime;
+
+    private String roleIds;
+
+    private Date updateTime;
+
+    private String updateUser;
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public String getUpdateUser() {
+        return updateUser;
+    }
+
+    public void setUpdateUser(String updateUser) {
+        this.updateUser = updateUser;
+    }
+
+    public String getRoleIds() {
+        return roleIds;
+    }
+
+    public void setRoleIds(String roleIds) {
+        this.roleIds = roleIds;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public String getUsername() {
         return username;
@@ -45,6 +87,14 @@ public class DSSWorkspaceUser {
         this.workspaceId = workspaceId;
     }
 
+    public String getWorkspaceName() {
+        return workspaceName;
+    }
+
+    public void setWorkspaceName(String workspaceName) {
+        this.workspaceName = workspaceName;
+    }
+
     public String getCreator() {
         return creator;
     }
@@ -59,5 +109,19 @@ public class DSSWorkspaceUser {
 
     public void setJoinTime(Date joinTime) {
         this.joinTime = joinTime;
+    }
+
+
+
+    @Override
+    public String toString() {
+        return "DSSWorkspaceUser{" +
+                "id=" + id +
+                ", username='" + username + '\'' +
+                ", workspaceId=" + workspaceId +
+                ", creator='" + creator + '\'' +
+                ", joinTime=" + joinTime +
+                ", roleIds=" + roleIds +
+                '}';
     }
 }

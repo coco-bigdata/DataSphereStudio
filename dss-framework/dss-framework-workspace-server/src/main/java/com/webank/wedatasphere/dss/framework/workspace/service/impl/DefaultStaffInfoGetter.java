@@ -22,6 +22,7 @@ import com.webank.wedatasphere.dss.framework.workspace.service.StaffInfoGetter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
 import java.util.List;
 
 
@@ -36,5 +37,16 @@ public class DefaultStaffInfoGetter implements StaffInfoGetter {
     @Override
     public String getFullOrgNameByUsername(String username) {
         return "WeDataSphere";
+    }
+
+    @Override
+    public List<String> getAllDepartments() {
+        List<String> allDepartments = Arrays.asList("WeDataSphere-linkisGroup");
+        return allDepartments;
+    }
+
+    @Override
+    public StaffInfo getStaffInfoByUsername(String username) {
+        return new StaffInfo();
     }
 }

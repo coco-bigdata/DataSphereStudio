@@ -18,5 +18,7 @@ package com.webank.wedatasphere.dss.orchestrator.server.constant;
 
 
 public class DSSOrchestratorConstant {
-    public static final String PUBLISH_FLOW_REPORT_FORMATE = "工作流名:%s,版本号:%s，工作流内容为空,请自行修改或者删除";
+
+    //每次提交linkis清理数量控制在10个以下，超了接口就会返回超时
+    public static final int MAX_CLEAR_SIZE = 10;
 }

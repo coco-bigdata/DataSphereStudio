@@ -16,8 +16,8 @@
 
 package com.webank.wedatasphere.dss.standard.app.sso.origin.plugin
 
-import com.webank.wedatasphere.linkis.httpclient.dws.annotation.DWSHttpMessageResult
-import com.webank.wedatasphere.linkis.httpclient.dws.response.DWSResult
+import org.apache.linkis.httpclient.dws.annotation.DWSHttpMessageResult
+import org.apache.linkis.httpclient.dws.response.DWSResult
 
 import scala.beans.BeanProperty
 
@@ -33,5 +33,14 @@ class UserInfoResult extends DWSResult {
 class WorkspaceUsersResult extends DWSResult {
 
   @BeanProperty var users: java.util.List[String] = _
+
+}
+
+@DWSHttpMessageResult("/api/rest_j/v\\d+/dss/framework/proxy/getProxyUser")
+class ProxyUserInfoResult extends DWSResult {
+
+  @BeanProperty var userName: String = _
+
+  @BeanProperty var proxyUser: String = _
 
 }

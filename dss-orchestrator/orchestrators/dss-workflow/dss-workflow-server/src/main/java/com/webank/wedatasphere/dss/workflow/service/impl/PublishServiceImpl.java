@@ -18,21 +18,46 @@ package com.webank.wedatasphere.dss.workflow.service.impl;
 
 import com.webank.wedatasphere.dss.appconn.manager.AppConnManager;
 import com.webank.wedatasphere.dss.appconn.scheduler.SchedulerAppConn;
+import com.webank.wedatasphere.dss.common.entity.project.DSSProject;
 import com.webank.wedatasphere.dss.common.exception.DSSErrorException;
+import com.webank.wedatasphere.dss.common.protocol.project.ProjectInfoRequest;
 import com.webank.wedatasphere.dss.common.utils.DSSExceptionUtils;
+import com.webank.wedatasphere.dss.common.utils.RpcAskUtils;
 import com.webank.wedatasphere.dss.orchestrator.common.protocol.RequestFrameworkConvertOrchestration;
 import com.webank.wedatasphere.dss.orchestrator.common.protocol.RequestFrameworkConvertOrchestrationStatus;
 import com.webank.wedatasphere.dss.orchestrator.common.protocol.ResponseConvertOrchestrator;
 import com.webank.wedatasphere.dss.sender.service.DSSSenderServiceFactory;
 import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
 import com.webank.wedatasphere.dss.standard.common.desc.AppInstance;
+import com.webank.wedatasphere.dss.workflow.common.entity.DSSFlow;
+import com.webank.wedatasphere.dss.workflow.common.parser.WorkFlowParser;
+import com.webank.wedatasphere.dss.workflow.constant.DSSWorkFlowConstant;
+import com.webank.wedatasphere.dss.workflow.service.DSSFlowService;
 import com.webank.wedatasphere.dss.workflow.service.PublishService;
-import com.webank.wedatasphere.linkis.rpc.Sender;
-import java.util.Map;
+import org.apache.commons.lang.StringUtils;
+import org.apache.linkis.rpc.Sender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import java.util.Map;
+
+import static com.webank.wedatasphere.dss.workflow.constant.DSSWorkFlowConstant.DEFAULT_SCHEDULER_APP_CONN;
 
 public class PublishServiceImpl implements PublishService {
+
+    @Autowired
+    private DSSFlowService dssFlowService;
+    @Autowired
+    private WorkFlowParser workFlowParser;
+
+    public void setDssFlowService(DSSFlowService dssFlowService) {
+        this.dssFlowService = dssFlowService;
+    }
+
+    public void setWorkFlowParser(WorkFlowParser workFlowParser) {
+        this.workFlowParser = workFlowParser;
+    }
 
     protected final Logger LOGGER = LoggerFactory.getLogger(getClass());
 
@@ -42,46 +67,94 @@ public class PublishServiceImpl implements PublishService {
 
     @Override
     public String submitPublish(String convertUser, Long workflowId,
-        Map<String, Object> dssLabel, Workspace workspace, String comment) throws Exception {
-        LOGGER.info("User {} begins to convert workflow {}", convertUser, workflowId);
+                                Map<String, Object> dssLabel, Workspace workspace, String comment) throws Exception {
+        LOGGER.info("User {} begins to convert workflow {}.", convertUser, workflowId);
         //1 获取对应的orcId 和 orcVersionId
         //2.进行提交
+        DSSFlow dssFlow = null;
         try {
-            RequestFrameworkConvertOrchestration requestFrameworkConvertOrchestration = new RequestFrameworkConvertOrchestration();
-            requestFrameworkConvertOrchestration.setComment(comment);
-            requestFrameworkConvertOrchestration.setOrcAppId(workflowId);
-            requestFrameworkConvertOrchestration.setUserName(convertUser);
-            requestFrameworkConvertOrchestration.setWorkspace(workspace);
-            SchedulerAppConn schedulerAppConn = AppConnManager.getAppConnManager().getAppConn(SchedulerAppConn.class);
+            dssFlow = dssFlowService.getFlow(workflowId);
+            if (dssFlow == null) {
+                DSSExceptionUtils.dealErrorException(63325, "workflow " + workflowId + " is not exists.", DSSErrorException.class);
+                return null;
+            }
+            ProjectInfoRequest projectInfoRequest = new ProjectInfoRequest();
+            projectInfoRequest.setProjectId(dssFlow.getProjectId());
+            DSSProject dssProject = (DSSProject) DSSSenderServiceFactory.getOrCreateServiceInstance().getProjectServerSender().ask(projectInfoRequest);
+            if (dssProject.getWorkspaceId() != workspace.getWorkspaceId()) {
+                DSSExceptionUtils.dealErrorException(63335, "工作流所在工作空间和cookie中不一致，请刷新页面后，再次发布！", DSSErrorException.class);
+            }
+            String schedulerAppConnName = workFlowParser.getValueWithKey(dssFlow.getFlowJson(), DSSWorkFlowConstant.SCHEDULER_APP_CONN_NAME);
+            if (StringUtils.isBlank(schedulerAppConnName)) {
+                // 向下兼容老版本
+                schedulerAppConnName = DEFAULT_SCHEDULER_APP_CONN.getValue();
+            }
+            SchedulerAppConn schedulerAppConn = (SchedulerAppConn) AppConnManager.getAppConnManager().getAppConn(schedulerAppConnName);
             // 只是为了获取是否需要发布所有Orc，这里直接拿第一个AppInstance即可。
             AppInstance appInstance = schedulerAppConn.getAppDesc().getAppInstances().get(0);
-            requestFrameworkConvertOrchestration.setConvertAllOrcs(schedulerAppConn.getOrCreateWorkflowConversionStandard().getDSSToRelConversionService(appInstance).isConvertAllOrcs());
-            requestFrameworkConvertOrchestration.setLabels(dssLabel);
-            ResponseConvertOrchestrator response = (ResponseConvertOrchestrator) getOrchestratorSender().ask(requestFrameworkConvertOrchestration);
+            ResponseConvertOrchestrator response = requestConvertOrchestration(comment, workflowId, convertUser,
+                    workspace, schedulerAppConn, dssLabel, appInstance);
+            if (response.getResponse().isFailed()) {
+                throw new DSSErrorException(50311, response.getResponse().getMessage());
+            }
             return response.getId();
+        } catch (DSSErrorException e) {
+            throw e;
         } catch (final Exception t) {
-            LOGGER.error("Failed to submit publish {}.", workflowId, t);
-            DSSExceptionUtils.dealErrorException(63325, "Failed to submit publish " + workflowId, t, DSSErrorException.class);
+            Object str = dssFlow == null ? workflowId : dssFlow.getName();
+            LOGGER.error("User {} failed to submit publish {}.", convertUser, str, t);
+            DSSExceptionUtils.dealErrorException(63325, "Failed to submit publish " + str, t, DSSErrorException.class);
         }
         return null;
     }
 
+    /**
+     * 可覆写该方法自定义实现request对象
+     *
+     * @return
+     */
+    protected ResponseConvertOrchestrator requestConvertOrchestration(String comment, Long workflowId, String convertUser, Workspace workspace,
+                                                                      SchedulerAppConn schedulerAppConn, Map<String, Object> dssLabel, AppInstance appInstance) {
+        RequestFrameworkConvertOrchestration requestFrameworkConvertOrchestration = new RequestFrameworkConvertOrchestration();
+        requestFrameworkConvertOrchestration.setComment(comment);
+        requestFrameworkConvertOrchestration.setOrcAppId(workflowId);
+        requestFrameworkConvertOrchestration.setUserName(convertUser);
+        requestFrameworkConvertOrchestration.setWorkspace(workspace);
+        requestFrameworkConvertOrchestration.setConvertAllOrcs(schedulerAppConn.getOrCreateConversionStandard().getDSSToRelConversionService(appInstance).isConvertAllOrcs());
+        requestFrameworkConvertOrchestration.setLabels(dssLabel);
+        ResponseConvertOrchestrator response = RpcAskUtils.processAskException(getOrchestratorSender().ask(requestFrameworkConvertOrchestration),
+                ResponseConvertOrchestrator.class, RequestFrameworkConvertOrchestration.class);
+        return response;
+    }
+
+
     @Override
     public ResponseConvertOrchestrator getStatus(String username, String taskId) {
-        if (LOGGER.isDebugEnabled()){
+        if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("{} is asking status of {}.", username, taskId);
         }
-        ResponseConvertOrchestrator response =new ResponseConvertOrchestrator();
-
+        ResponseConvertOrchestrator response = new ResponseConvertOrchestrator();
         //通过rpc的方式去获取到最新status
         try {
-            RequestFrameworkConvertOrchestrationStatus req = new RequestFrameworkConvertOrchestrationStatus(taskId);
-            response = (ResponseConvertOrchestrator) getOrchestratorSender().ask(req);
+            response = requestConvertOrchestrationStatus(taskId);
             LOGGER.info("user {} gets status of {}, status is {}，msg is {}", username, taskId, response.getResponse().getJobStatus(), response.getResponse().getMessage());
-        }catch (Exception t){
+        } catch (Exception t) {
             LOGGER.error("failed to getStatus {} ", taskId, t);
 
         }
         return response;
     }
+
+    /**
+     * 可覆写该方法自定义实现request对象
+     *
+     * @return
+     */
+    protected ResponseConvertOrchestrator requestConvertOrchestrationStatus(String taskId){
+        RequestFrameworkConvertOrchestrationStatus req =  new RequestFrameworkConvertOrchestrationStatus();
+        req.setId(taskId);
+        return RpcAskUtils.processAskException(getOrchestratorSender().ask(req), ResponseConvertOrchestrator.class,
+                RequestFrameworkConvertOrchestrationStatus.class);
+    }
+
 }

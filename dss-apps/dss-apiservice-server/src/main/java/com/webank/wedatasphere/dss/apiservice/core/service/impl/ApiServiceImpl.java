@@ -30,23 +30,23 @@ import com.webank.wedatasphere.dss.apiservice.core.token.JwtManager;
 import com.webank.wedatasphere.dss.apiservice.core.token.TokenAuth;
 import com.webank.wedatasphere.dss.apiservice.core.vo.*;
 import com.webank.wedatasphere.dss.apiservice.core.service.ApiService;
-import com.webank.wedatasphere.linkis.bml.client.BmlClient;
-import com.webank.wedatasphere.linkis.bml.client.BmlClientFactory;
-import com.webank.wedatasphere.linkis.bml.protocol.BmlUpdateResponse;
-import com.webank.wedatasphere.linkis.bml.protocol.BmlUploadResponse;
-import com.webank.wedatasphere.linkis.common.exception.ErrorException;
-import com.webank.wedatasphere.linkis.common.io.FsPath;
-import com.webank.wedatasphere.linkis.storage.script.ScriptFsWriter;
-import com.webank.wedatasphere.linkis.storage.script.ScriptMetaData;
-import com.webank.wedatasphere.linkis.storage.script.ScriptRecord;
-import com.webank.wedatasphere.linkis.storage.script.Variable;
-import com.webank.wedatasphere.linkis.storage.script.VariableParser;
-import com.webank.wedatasphere.linkis.storage.script.writer.StorageScriptFsWriter;
-import com.webank.wedatasphere.linkis.ujes.client.UJESClient;
+import org.apache.linkis.bml.client.BmlClient;
+import org.apache.linkis.bml.client.BmlClientFactory;
+import org.apache.linkis.bml.protocol.BmlUpdateResponse;
+import org.apache.linkis.bml.protocol.BmlUploadResponse;
+import org.apache.linkis.common.exception.ErrorException;
+import org.apache.linkis.common.io.FsPath;
+import org.apache.linkis.storage.script.ScriptFsWriter;
+import org.apache.linkis.storage.script.ScriptMetaData;
+import org.apache.linkis.storage.script.ScriptRecord;
+import org.apache.linkis.storage.script.Variable;
+import org.apache.linkis.storage.script.VariableParser;
+import org.apache.linkis.storage.script.writer.StorageScriptFsWriter;
+import org.apache.linkis.ujes.client.UJESClient;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.Consts;
 import org.apache.ibatis.annotations.Param;
-import org.mortbay.log.Log;
+//import org.mortbay.log.Log;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,8 +95,7 @@ public class ApiServiceImpl implements ApiService {
     public void buildClient() {
         LOG.info("build client start ======");
         client = BmlClientFactory.createBmlClient();
-        Map<String, String> props = new HashMap<>();
-        ujesClient = LinkisJobSubmit.getClient(props);
+        ujesClient = LinkisJobSubmit.getClient();
         LOG.info("build client end =======");
     }
 
@@ -166,7 +165,7 @@ public class ApiServiceImpl implements ApiService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void saveByApp(ApiServiceVo apiService) throws Exception {
+    public ApiServiceVo saveByApp(ApiServiceVo apiService) throws Exception {
         String user = apiService.getCreator();
         String resourceId = null;
         try {
@@ -213,6 +212,7 @@ public class ApiServiceImpl implements ApiService {
 
             //insert a token record for self
             genTokenForPublisher(apiService,apiVersionVo.getId());
+            return apiService;
         } catch (Exception e) {
             LOG.error("one service insert error", e);
             if (StringUtils.isNotBlank(resourceId)) {
@@ -231,7 +231,7 @@ public class ApiServiceImpl implements ApiService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void  update(ApiServiceVo apiService) throws Exception {
+    public ApiServiceVo  update(ApiServiceVo apiService) throws Exception {
         try {
             if(null!=apiService.getTargetServiceId()) {
                 ApiVersionVo maxTargetApiVersionVo = getMaxVersion(apiService.getTargetServiceId());
@@ -244,7 +244,7 @@ public class ApiServiceImpl implements ApiService {
                     apiService.setCreator(maxTargetApiVersionVo.getCreator());
                     apiService.setId(maxTargetApiVersionVo.getApiId());
                     apiServiceDao.updateToTarget(apiService);
-                    Log.info("Update to other Api Service, ID: " + apiService.getTargetServiceId() + ",resourceId:" + maxTargetApiVersionVo.getBmlResourceId());
+//                    Log.info("Update to other Api Service, ID: " + apiService.getTargetServiceId() + ",resourceId:" + maxTargetApiVersionVo.getBmlResourceId());
 
 
                     String version = updateResult.get("version");
@@ -289,6 +289,7 @@ public class ApiServiceImpl implements ApiService {
 
                     //insert a token record for self
                     genTokenForPublisher(apiService, apiServiceVersionVo.getId());
+                    return apiService;
                 }else {
                     throw new ApiServiceQueryException(800036,"Only can update the api service by owner! ");
                 }
@@ -415,14 +416,14 @@ public class ApiServiceImpl implements ApiService {
     }
 
     @Override
-    public Boolean enableApi(Long id,String userName) {
-        ApiServiceVo apiServiceVo = apiServiceDao.queryById(id);
+    public Boolean enableApi(String userName,ApiServiceVo apiServiceVo) {
+
         if(!checkUserWorkspace(userName,apiServiceVo.getWorkspaceId().intValue())){
             LOG.error("api service check workspace error");
             return false;
         }
         if(apiServiceVo.getCreator().equals(userName)) {
-
+            long id=apiServiceVo.getId();
             Integer updateCount = apiServiceDao.enableApi(id);
             List<ApiVersionVo> targetApiVersionList = apiServiceVersionDao.queryApiVersionByApiServiceId(id);
             ApiVersionVo maxTargetApiVersionVo = targetApiVersionList.stream().max(Comparator.comparing(ApiVersionVo::getVersion)).orElse(null);
@@ -436,13 +437,13 @@ public class ApiServiceImpl implements ApiService {
     }
 
     @Override
-    public Boolean disableApi(Long id,String userName) {
-        ApiServiceVo apiServiceVo = apiServiceDao.queryById(id);
+    public Boolean disableApi(String userName,ApiServiceVo apiServiceVo) {
         if(!checkUserWorkspace(userName,apiServiceVo.getWorkspaceId().intValue())){
             LOG.error("api service check workspace error");
             return false;
         }
         if(apiServiceVo.getCreator().equals(userName)) {
+            Long id=apiServiceVo.getId();
             Integer updateCount = apiServiceDao.disableApi(id);
             apiServiceTokenManagerDao.disableTokenStatusByApiId(id);
             apiServiceVersionDao.updateAllApiVersionStatusByApiServiceId(id, 0);
@@ -454,13 +455,13 @@ public class ApiServiceImpl implements ApiService {
 
 
     @Override
-    public Boolean deleteApi(Long id,String userName) {
-        ApiServiceVo apiServiceVo = apiServiceDao.queryById(id);
+    public Boolean deleteApi(String userName,ApiServiceVo apiServiceVo) {
         if(!checkUserWorkspace(userName,apiServiceVo.getWorkspaceId().intValue())){
             LOG.error("api service check workspace error");
             return false;
         }
         if(apiServiceVo.getCreator().equals(userName)) {
+            Long id = apiServiceVo.getId();
             Integer updateCount = apiServiceDao.deleteApi(id);
             apiServiceTokenManagerDao.disableTokenStatusByApiId(id);
             apiServiceVersionDao.updateAllApiVersionStatusByApiServiceId(id, 0);
@@ -471,14 +472,13 @@ public class ApiServiceImpl implements ApiService {
     }
 
     @Override
-    public Boolean updateComment(Long id, String comment, String userName) {
-        ApiServiceVo apiServiceVo = apiServiceDao.queryById(id);
+    public Boolean updateComment(String comment, String userName,ApiServiceVo apiServiceVo) {
         if(!checkUserWorkspace(userName,apiServiceVo.getWorkspaceId().intValue())){
             LOG.error("api service check workspace error");
             return false;
         }
         if(apiServiceVo.getCreator().equals(userName)) {
-            Integer updateCount = apiServiceDao.updateApiServiceComment(id,comment);
+            Integer updateCount = apiServiceDao.updateApiServiceComment(apiServiceVo.getId(),comment);
             return updateCount > 0;
         }else {
             return false;
@@ -491,7 +491,7 @@ public class ApiServiceImpl implements ApiService {
             List<Variable> variableList=null;
            if(metadata.entrySet().size() >0) {
                Variable[] v = VariableParser.getVariables(metadata);
-               variableList = Arrays.stream(v).filter(var -> !StringUtils.isEmpty(var.value())).collect(Collectors.toList());
+               variableList = Arrays.stream(v).filter(var -> !StringUtils.isEmpty(var.getValue())).collect(Collectors.toList());
 
            }
            if(variableList!=null) {
@@ -520,7 +520,7 @@ public class ApiServiceImpl implements ApiService {
         try {
             ScriptFsWriter writer = StorageScriptFsWriter.getScriptFsWriter(new FsPath(scriptPath), Consts.UTF_8.toString(), null);
             Variable[] v = VariableParser.getVariables(metadata);
-            List<Variable> variableList = Arrays.stream(v).filter(var -> !StringUtils.isEmpty(var.value())).collect(Collectors.toList());
+            List<Variable> variableList = Arrays.stream(v).filter(var -> !StringUtils.isEmpty(var.getValue())).collect(Collectors.toList());
             writer.addMetaData(new ScriptMetaData(variableList.toArray(new Variable[0])));
             writer.addRecord(new ScriptRecord(scriptContent));
             InputStream inputStream = writer.getInputStream();

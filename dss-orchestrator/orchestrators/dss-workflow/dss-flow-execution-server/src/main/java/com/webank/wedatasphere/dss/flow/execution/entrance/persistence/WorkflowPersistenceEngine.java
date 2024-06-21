@@ -17,17 +17,17 @@ package com.webank.wedatasphere.dss.flow.execution.entrance.persistence;
 
 import com.webank.wedatasphere.dss.flow.execution.entrance.service.WorkflowQueryService;
 import com.webank.wedatasphere.dss.flow.execution.entrance.utils.FlowExecutionUtils;
-import com.webank.wedatasphere.linkis.common.exception.ErrorException;
-import com.webank.wedatasphere.linkis.entrance.exception.EntranceIllegalParamException;
-import com.webank.wedatasphere.linkis.entrance.exception.EntranceRPCException;
-import com.webank.wedatasphere.linkis.entrance.exception.QueryFailedException;
-import com.webank.wedatasphere.linkis.entrance.persistence.AbstractPersistenceEngine;
-import com.webank.wedatasphere.linkis.governance.common.entity.job.JobRequest;
-import com.webank.wedatasphere.linkis.governance.common.entity.job.SubJobDetail;
-import com.webank.wedatasphere.linkis.governance.common.entity.job.SubJobInfo;
-import com.webank.wedatasphere.linkis.governance.common.entity.task.*;
-import com.webank.wedatasphere.linkis.protocol.constants.TaskConstant;
-import com.webank.wedatasphere.linkis.protocol.task.Task;
+import org.apache.linkis.common.exception.ErrorException;
+import org.apache.linkis.entrance.exception.EntranceIllegalParamException;
+import org.apache.linkis.entrance.exception.EntranceRPCException;
+import org.apache.linkis.entrance.exception.QueryFailedException;
+import org.apache.linkis.entrance.persistence.AbstractPersistenceEngine;
+import org.apache.linkis.governance.common.entity.job.JobRequest;
+import org.apache.linkis.governance.common.entity.job.SubJobDetail;
+import org.apache.linkis.governance.common.entity.job.SubJobInfo;
+import org.apache.linkis.governance.common.entity.task.*;
+import org.apache.linkis.protocol.constants.TaskConstant;
+import org.apache.linkis.protocol.task.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
@@ -64,9 +64,8 @@ public class WorkflowPersistenceEngine extends AbstractPersistenceEngine {
         RequestPersistTask requestPersistTask = FlowExecutionUtils.jobRequest2RequestPersistTask(jobRequest);
         BeanUtils.copyProperties(requestPersistTask, requestInsertTask);
         ResponsePersist responsePersist = null;
-
         try {
-            responsePersist = workflowQueryService.add(requestInsertTask);
+            responsePersist = workflowQueryService.add(requestInsertTask,jobRequest);
         } catch (Exception e) {
             throw new EntranceRPCException(20020, "sender rpc failed", e);
         }
@@ -91,11 +90,6 @@ public class WorkflowPersistenceEngine extends AbstractPersistenceEngine {
         }
     }
 
-
-    @Override
-    public void persist(SubJobInfo subjobInfo) throws ErrorException {
-
-    }
 
     //    @Override
 //    public Task retrieve(Long taskID)throws EntranceIllegalParamException, QueryFailedException, EntranceRPCException {
@@ -161,11 +155,6 @@ public class WorkflowPersistenceEngine extends AbstractPersistenceEngine {
     }
 
     @Override
-    public void updateIfNeeded(SubJobInfo subJobInfo) throws ErrorException {
-
-    }
-
-    @Override
     public Task[] readAll(String instance) throws EntranceIllegalParamException, EntranceRPCException, QueryFailedException {
 
         List<Task> retList = new ArrayList<>();
@@ -211,10 +200,6 @@ public class WorkflowPersistenceEngine extends AbstractPersistenceEngine {
         return null;
     }
 
-    @Override
-    public SubJobDetail retrieveJobDetailReq(Long jobDetailId) throws ErrorException {
-        return null;
-    }
 
     @Override
     public void close() throws IOException {

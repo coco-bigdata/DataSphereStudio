@@ -16,64 +16,84 @@
 
 package com.webank.wedatasphere.dss.framework.project.restful;
 
-import com.webank.wedatasphere.dss.common.utils.DSSCommonUtils;
+import com.webank.wedatasphere.dss.common.auditlog.OperateTypeEnum;
+import com.webank.wedatasphere.dss.common.auditlog.TargetTypeEnum;
+import com.webank.wedatasphere.dss.common.utils.AuditLogUtils;
+import com.webank.wedatasphere.dss.common.utils.DSSExceptionUtils;
+import com.webank.wedatasphere.dss.framework.project.conf.ProjectConf;
+import com.webank.wedatasphere.dss.framework.project.entity.DSSProjectDO;
 import com.webank.wedatasphere.dss.framework.project.entity.request.ProjectCreateRequest;
 import com.webank.wedatasphere.dss.framework.project.entity.request.ProjectDeleteRequest;
 import com.webank.wedatasphere.dss.framework.project.entity.request.ProjectModifyRequest;
 import com.webank.wedatasphere.dss.framework.project.entity.request.ProjectQueryRequest;
 import com.webank.wedatasphere.dss.framework.project.entity.response.ProjectResponse;
 import com.webank.wedatasphere.dss.framework.project.entity.vo.DSSProjectVo;
+import com.webank.wedatasphere.dss.framework.project.exception.DSSProjectErrorException;
 import com.webank.wedatasphere.dss.framework.project.service.DSSFrameworkProjectService;
 import com.webank.wedatasphere.dss.framework.project.service.DSSProjectService;
+import com.webank.wedatasphere.dss.framework.project.service.ProjectHttpRequestHook;
 import com.webank.wedatasphere.dss.framework.project.utils.ApplicationArea;
-import com.webank.wedatasphere.dss.framework.project.utils.RestfulUtils;
+import com.webank.wedatasphere.dss.framework.proxy.exception.DSSProxyUserErrorException;
 import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
 import com.webank.wedatasphere.dss.standard.sso.utils.SSOHelper;
-import com.webank.wedatasphere.linkis.server.Message;
-import com.webank.wedatasphere.linkis.server.security.SecurityFilter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import javax.servlet.http.HttpServletRequest;
-import javax.validation.Valid;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import org.apache.commons.math3.util.Pair;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.linkis.common.exception.WarnException;
+import org.apache.linkis.server.Message;
+import org.apache.linkis.server.security.SecurityFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
+import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.validation.Valid;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
-@Component
-@Path("/dss/framework/project")
-@Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
+@RequestMapping(path = "/dss/framework/project", produces = {"application/json"})
+@RestController
 public class DSSFrameworkProjectRestfulApi {
     private static final Logger LOGGER = LoggerFactory.getLogger(DSSFrameworkProjectRestfulApi.class);
+    private static final int MAX_DESC_LENGTH = ProjectConf.MAX_DESC_LENGTH.getValue();
+    private static final int MAX_BUSSINESS_SIZE = 200;
     @Autowired
     DSSFrameworkProjectService dssFrameworkProjectService;
     @Autowired
     private DSSProjectService projectService;
+    @Autowired
+    private DSSProjectService dssProjectService;
+    @Autowired
+    private List<ProjectHttpRequestHook> projectHttpRequestHooks;
 
-    /**
-     * 获取所有工程或者单个工程
-     *
-     * @param request
-     * @return
-     */
-    @GET
-    @Path("getWorkSpaceStr")
-    public Response getWorkSpaceStr(@Context HttpServletRequest request) {
-        Workspace workspace = SSOHelper.getWorkspace(request);
-        Message message = Message.ok("").data("workspaceStr", DSSCommonUtils.COMMON_GSON.toJson(workspace));
-        return Message.messageToResponse(message);
+    private Message executePreHook(Function<ProjectHttpRequestHook, Message> function) {
+        String errorMsg = projectHttpRequestHooks.stream().map(function).filter(Objects::nonNull).map(Message::getMessage)
+                .collect(Collectors.joining(", "));
+        if(StringUtils.isNotBlank(errorMsg)) {
+            return Message.error(errorMsg);
+        } else {
+            return null;
+        }
+    }
+
+    private Message executeAfterHook(Consumer<ProjectHttpRequestHook> consumer, Supplier<Message> supplier) {
+        try {
+            projectHttpRequestHooks.forEach(consumer);
+        } catch (WarnException e) {
+            LOGGER.error("execute after hook failed!", e);
+            return Message.error("Execute hook failed, reason: " + e.getDesc());
+        } catch (Exception e) {
+            LOGGER.error("execute after hook failed!", e);
+            return Message.error("Execute hook failed, reason: " + ExceptionUtils.getRootCauseMessage(e));
+        }
+        return supplier.get();
     }
 
     /**
@@ -83,37 +103,86 @@ public class DSSFrameworkProjectRestfulApi {
      * @param projectRequest
      * @return
      */
-    @POST
-    @Path("getAllProjects")
-    public Response getAllProjects(@Context HttpServletRequest request, @Valid ProjectQueryRequest projectRequest) {
+    @RequestMapping(path = "getAllProjects", method = RequestMethod.POST)
+    public Message getAllProjects(HttpServletRequest request, @RequestBody ProjectQueryRequest projectRequest) {
         String username = SecurityFilter.getLoginUsername(request);
         projectRequest.setUsername(username);
+        Message message = executePreHook(projectHttpRequestHook -> projectHttpRequestHook.beforeGetAllProjects(request, projectRequest));
+        if(message != null) {
+            return message;
+        }
+        LOGGER.info("user {} begin to getAllProjects, projectId: {}.", username, projectRequest.getId());
         List<ProjectResponse> dssProjectVos = projectService.getListByParam(projectRequest);
-        Message message = Message.ok("获取工作空间的工程成功").data("projects", dssProjectVos);
-        return Message.messageToResponse(message);
+        if(!CollectionUtils.isEmpty(dssProjectVos) && projectRequest.getFilterProject()){
+            dssProjectVos = dssProjectVos.stream().filter(item->
+                    (item.getEditUsers().contains(username) || item.getReleaseUsers().contains(username))
+                            && item.getEditable()).collect(Collectors.toList());
+        }
+        return Message.ok("获取工作空间的工程成功").data("projects", dssProjectVos);
     }
 
     /**
      * 新建工程,通过和各个AppConn进行交互，将需要满足工程规范的所有的appconn进行创建工程
      */
-    @POST
-    @Path("createProject")
-    public Response createProject(@Context HttpServletRequest request, @Valid ProjectCreateRequest projectCreateRequest) {
+    @RequestMapping(path = "createProject", method = RequestMethod.POST)
+    public Message createProject(HttpServletRequest request, @RequestBody ProjectCreateRequest projectCreateRequest) throws DSSProxyUserErrorException {
         String username = SecurityFilter.getLoginUsername(request);
         Workspace workspace = SSOHelper.getWorkspace(request);
-        try {
-            DSSProjectVo dssProjectVo = dssFrameworkProjectService.createProject(projectCreateRequest, username, workspace);
-            if (dssProjectVo != null) {
-                return Message.messageToResponse(Message.ok("创建工程成功").data("project", dssProjectVo));
-            } else {
-                return Message.messageToResponse(Message.error("创建工程失败"));
-            }
-        } catch (final Throwable t) {
-            LOGGER.error("failed to create project {} for user {}", projectCreateRequest.getName(), username, t);
-            return RestfulUtils.dealError("创建工程失败:" + t.getMessage());
+        LOGGER.info("user {} begin to createProject, workspace {}, project entity: {}.", username, workspace.getWorkspaceName(), projectCreateRequest);
+        if(projectCreateRequest.getEditUsers() == null) {
+            projectCreateRequest.setEditUsers(new ArrayList<>());
         }
+        if(projectCreateRequest.getReleaseUsers() == null) {
+            projectCreateRequest.setReleaseUsers(new ArrayList<>());
+        }
+        Message message = executePreHook(projectHttpRequestHook -> projectHttpRequestHook.beforeCreateProject(request, projectCreateRequest));
+        if(message != null) {
+            return message;
+        }
+        //將创建人默认为发布权限和編輯权限
+        if (!projectCreateRequest.getEditUsers().contains(username)) {
+            projectCreateRequest.getEditUsers().add(username);
+        }
+        if (!projectCreateRequest.getReleaseUsers().contains(username)) {
+            projectCreateRequest.getReleaseUsers().add(username);
+        }
+        return DSSExceptionUtils.getMessage(() -> {
+                    DSSProjectVo dssProjectVo = dssFrameworkProjectService.createProject(projectCreateRequest, username, workspace);
+                    AuditLogUtils.printLog(username, workspace.getWorkspaceId(), workspace.getWorkspaceName(), TargetTypeEnum.PROJECT,
+                            dssProjectVo.getId(),dssProjectVo.getName(), OperateTypeEnum.CREATE,projectCreateRequest);
+                    return dssProjectVo;
+                },
+                dssProjectVo ->
+                    executeAfterHook(projectHttpRequestHook -> projectHttpRequestHook.afterCreateProject(request, projectCreateRequest, dssProjectVo),
+                            () -> Message.ok("创建工程成功.").data("project", dssProjectVo)),
+                String.format("用户 %s 创建工程 %s 失败. ", username, projectCreateRequest.getName()));
     }
 
+    @RequestMapping(path = "checkProjectName", method = RequestMethod.GET)
+    public Message checkProjectName(HttpServletRequest request, @RequestParam(name = "name") String name) {
+        String username = SecurityFilter.getLoginUsername(request);
+        Workspace workspace = SSOHelper.getWorkspace(request);
+        LOGGER.info("user {} begin to checkProjectName: {}", username, name);
+        return DSSExceptionUtils.getMessage(() -> dssFrameworkProjectService.checkProjectName(name, workspace, username),
+                () -> Message.ok().data("repeat", false), String.format("用户 %s，创建工程名 %s 失败. ", username, name));
+    }
+
+    @RequestMapping(path = "getProjectInfo", method = RequestMethod.GET)
+    public Message getProjectInfoByName(@RequestParam(name = "projectName") String projectName){
+        DSSProjectDO dbProject = dssProjectService.getProjectByName(projectName);
+        Message message;
+        if(dbProject==null){
+            String msg = String.format("project %s does not exist.", projectName);
+            message = Message.error(msg);
+        }else{
+            DSSProjectVo dssProjectVo = new DSSProjectVo();
+            dssProjectVo.setDescription(dbProject.getDescription());
+            dssProjectVo.setId(dbProject.getId());
+            dssProjectVo.setName(dbProject.getName());
+            message = Message.ok().data("project", dssProjectVo);
+        }
+        return  message;
+    }
     /**
      * 编辑工程
      *
@@ -121,17 +190,52 @@ public class DSSFrameworkProjectRestfulApi {
      * @param projectModifyRequest
      * @return
      */
-    @POST
-    @Path("modifyProject")
-    public Response modifyProject(@Context HttpServletRequest request, @Valid ProjectModifyRequest projectModifyRequest) {
-        String username = SecurityFilter.getLoginUsername(request);
-        try {
-            dssFrameworkProjectService.modifyProject(projectModifyRequest, username);
-            return Message.messageToResponse(Message.ok("修改工程成功"));
-        } catch (Exception e) {
-            LOGGER.error("Failed to modify project {} for user {}", projectModifyRequest.getName(), username, e);
-            return RestfulUtils.dealError("修改工程失败:" + e.getMessage());
+    @RequestMapping(path = "modifyProject", method = RequestMethod.POST)
+    public Message modifyProject(HttpServletRequest request, @RequestBody ProjectModifyRequest projectModifyRequest) throws Exception {
+        if (projectModifyRequest.getId() == null || projectModifyRequest.getId() < 0) {
+            return Message.error("project id is null, cannot modify it.");
         }
+        String username = SecurityFilter.getLoginUsername(request);
+        Workspace workspace = SSOHelper.getWorkspace(request);
+        LOGGER.info("user {} begin to modifyProject, workspace {}, project entity: {}.", username, workspace.getWorkspaceName(), projectModifyRequest);
+        Message message = executePreHook(projectHttpRequestHook -> projectHttpRequestHook.beforeModifyProject(request, projectModifyRequest));
+        if(message != null) {
+            return message;
+        }
+        if (projectModifyRequest.getDescription().length() > MAX_DESC_LENGTH) {
+            return Message.error("The project description information is too long, exceeding the maximum length:" + MAX_DESC_LENGTH);
+        }
+        if(org.apache.commons.lang.StringUtils.isNotEmpty(projectModifyRequest.getBusiness()) && projectModifyRequest.getBusiness().length() > MAX_BUSSINESS_SIZE){
+            return Message.error("The project bussiness is too long, exceeding the maximum length:" + MAX_BUSSINESS_SIZE);
+        }
+        DSSProjectDO dbProject = dssProjectService.getProjectById(projectModifyRequest.getId());
+        //工程不存在
+        if (dbProject == null) {
+            LOGGER.error("project {} is not exists.", projectModifyRequest.getName());
+            return Message.error(String.format("project %s is not exists.", projectModifyRequest.getName()));
+        }
+        String createUsername = dbProject.getUsername();
+        //將创建人默认为发布权限和編輯权限
+        if (!projectModifyRequest.getEditUsers().contains(createUsername)) {
+            projectModifyRequest.getEditUsers().add(createUsername);
+        }
+        List<String> releaseUsers = projectModifyRequest.getReleaseUsers();
+        if (releaseUsers == null) {
+            releaseUsers = new ArrayList<>();
+            projectModifyRequest.setReleaseUsers(releaseUsers);
+        }
+        if (!releaseUsers.contains(createUsername)) {
+            releaseUsers.add(createUsername);
+        }
+        return DSSExceptionUtils.getMessage(() -> {
+                    dssFrameworkProjectService.modifyProject(projectModifyRequest, dbProject, username, workspace);
+                    AuditLogUtils.printLog(username, workspace.getWorkspaceId(), workspace.getWorkspaceName(), TargetTypeEnum.PROJECT,
+                            projectModifyRequest.getId(),projectModifyRequest.getName(), OperateTypeEnum.UPDATE,projectModifyRequest);
+                    },
+                () ->
+                    executeAfterHook(projectHttpRequestHook -> projectHttpRequestHook.afterModifyProject(request, projectModifyRequest),
+                            () -> Message.ok("修改工程成功.")),
+                String.format("用户 %s 修改工程 %s 失败. ", username, projectModifyRequest.getName()));
     }
 
     /**
@@ -141,23 +245,30 @@ public class DSSFrameworkProjectRestfulApi {
      * @param projectDeleteRequest
      * @return
      */
-    @POST
-    @Path("deleteProject")
-    public Response deleteProject(@Context HttpServletRequest request, @Valid ProjectDeleteRequest projectDeleteRequest) {
+    @RequestMapping(path = "deleteProject", method = RequestMethod.POST)
+    public Message deleteProject(HttpServletRequest request, @RequestBody ProjectDeleteRequest projectDeleteRequest) {
         String username = SecurityFilter.getLoginUsername(request);
         Workspace workspace = SSOHelper.getWorkspace(request);
-        try{
-            projectService.deleteProject(username, projectDeleteRequest, workspace);
-            return RestfulUtils.dealOk("删除工程成功");
-        }catch(final Throwable t){
-            LOGGER.error("Failed to delete {} for user {}", projectDeleteRequest, username);
-            return RestfulUtils.dealError("删除工程失败");
+        Message message = executePreHook(projectHttpRequestHook -> projectHttpRequestHook.beforeDeleteProject(request, projectDeleteRequest));
+        if(message != null) {
+            return message;
         }
+        LOGGER.info("user {} begin to deleteProject, workspace {}, project entity: {}.", username, workspace.getWorkspaceName(), projectDeleteRequest);
+        return DSSExceptionUtils.getMessage(() -> {
+                    // 检查是否具有删除项目权限
+                    projectService.isDeleteProjectAuth(projectDeleteRequest.getId(), username);
+                    DSSProjectDO dssProjectDO= projectService.getProjectById(projectDeleteRequest.getId());
+                    projectService.deleteProject(username, projectDeleteRequest, workspace,dssProjectDO);
+                    AuditLogUtils.printLog(username, workspace.getWorkspaceId(), workspace.getWorkspaceName(), TargetTypeEnum.PROJECT,
+                            dssProjectDO.getId(),dssProjectDO.getName(), OperateTypeEnum.DELETE,projectDeleteRequest);                },
+                () ->
+                    executeAfterHook(projectHttpRequestHook -> projectHttpRequestHook.afterDeleteProject(request, projectDeleteRequest),
+                            () -> Message.ok("删除工程成功.")),
+                String.format("用户 %s 删除工程失败. ", username));
     }
 
-    @GET
-    @Path("/listApplicationAreas")
-    public Response listApplicationAreas(@Context HttpServletRequest req) {
+    @RequestMapping(path = "listApplicationAreas", method = RequestMethod.GET)
+    public Message listApplicationAreas(HttpServletRequest req) {
         String header = req.getHeader("Content-language").trim();
         ApplicationArea[] applicationAreas = ApplicationArea.values();
         List<String> areas = new ArrayList<>();
@@ -168,21 +279,37 @@ public class DSSFrameworkProjectRestfulApi {
                 areas.add(item.getEnName());
             }
         });
-        return Message.messageToResponse(Message.ok().data("applicationAreas", areas));
+        return Message.ok().data("applicationAreas", areas);
     }
 
-
-    @GET
-    @Path("/getProjectAbilities")
-    public Response getProjectAbilities(@Context HttpServletRequest request){
+    @RequestMapping(path = "getProjectAbilities", method = RequestMethod.GET)
+    public Message getProjectAbilities(HttpServletRequest request) {
         //为了获取到此环境的能力，导入 导出  发布等
         String username = SecurityFilter.getLoginUsername(request);
-        try{
+        try {
             List<String> projectAbilities = projectService.getProjectAbilities(username);
-            return RestfulUtils.dealOk("获取工程能力成功", new Pair<>("projectAbilities", projectAbilities));
-        }catch(final Throwable t){
+            return Message.ok("获取工程能力成功").data("projectAbilities", projectAbilities);
+        } catch (final Throwable t) {
             LOGGER.error("failed to get project ability for user {}", username, t);
-            return RestfulUtils.dealError("获取工程能力失败");
+            return Message.error("获取工程能力失败");
         }
     }
+
+
+    /**
+     * 获取已删除的所有工程
+     */
+    @RequestMapping(path = "getDeletedProjects", method = RequestMethod.POST)
+    public Message getDeletedProjects(HttpServletRequest request, @Valid @RequestBody ProjectQueryRequest projectRequest) {
+        String username = SecurityFilter.getLoginUsername(request);
+        projectRequest.setUsername(username);
+        Message message = executePreHook(projectHttpRequestHook -> projectHttpRequestHook.beforeGetDeletedProject(request, projectRequest));
+        if(message != null) {
+            return message;
+        }
+        List<ProjectResponse> dssProjectVos = projectService.getDeletedProjects(projectRequest);
+        return Message.ok("获取工作空间已删除的工程成功").data("projects", dssProjectVos);
+    }
+
+
 }

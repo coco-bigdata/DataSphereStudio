@@ -16,12 +16,10 @@
 
 package com.webank.wedatasphere.dss.flow.execution.entrance.conf
 
-import com.webank.wedatasphere.linkis.common.conf.CommonVars
+import org.apache.linkis.common.conf.CommonVars
 
 
 object FlowExecutionEntranceConfiguration {
-
-  val WORKFLOW_APPLICATION_NAME = CommonVars("wds.dss.workflow.service.name", "DSS-WORKFLOW-SERVER-")
 
   val NODE_PRINT_FLAG = CommonVars("wds.linkis.flow.node.log.flag", false)
 

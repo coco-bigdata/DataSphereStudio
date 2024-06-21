@@ -38,12 +38,12 @@ fi
 
 local_host="`hostname --fqdn`"
 source $DSS_HOME/sbin/common.sh
-source $DSS_HOME/conf/config.sh
+source $DSS_CONF_DIR/config.sh
 
 function startApp(){
 echo "<-------------------------------->"
 echo "Begin to start $SERVER_NAME"
-SERVER_START_CMD="sh $DSS_INSTALL_HOME/sbin/dss-daemon.sh restart $SERVER_NAME"
+SERVER_START_CMD="sh $DSS_HOME/sbin/dss-daemon.sh restart $SERVER_NAME"
 if test -z "$SERVER_IP"
 then
   SERVER_IP=$local_host
@@ -80,59 +80,27 @@ echo "<-------------------------------->"
 sleep 3
 }
 
-
 function startDssProject(){
-	SERVER_NAME=dss-framework-project-server
-	SERVER_IP=$DSS_FRAMEWORK_PROJECT_SERVER_INSTALL_IP
+	SERVER_NAME=dss-apps-server
+	SERVER_IP=$DSS_APPS_SERVER_INSTALL_IP
 	startApp
 
-	SERVER_NAME=dss-framework-orchestrator-server
-	SERVER_IP=$DSS_FRAMEWORK_ORCHESTRATOR_SERVER_INSTALL_IP
+  SERVER_NAME=dss-server
+	SERVER_IP=$DSS_SERVER_INSTALL_IP
 	startApp
 
-	SERVER_NAME=dss-apiservice-server
-	SERVER_IP=$DSS_APISERVICE_SERVER_INSTALL_IP
-	startApp
-
-	SERVER_NAME=dss-datapipe-server
-  SERVER_IP=$DSS_DATAPIPE_SERVER_INSTALL_IP
-  startApp
-
-	SERVER_NAME=dss-workflow-server
-	SERVER_IP=$DSS_WORKFLOW_SERVER_INSTALL_IP
-	startApp
-
-	SERVER_NAME=dss-flow-execution-server
-	SERVER_IP=$DSS_FLOW_EXECUTION_SERVER_INSTALL_IP
-	startApp
 }
 
 function checkDssService(){
-	SERVER_NAME=dss-framework-project-server
-	SERVER_IP=$DSS_FRAMEWORK_PROJECT_SERVER_INSTALL_IP
+	SERVER_NAME=dss-apps-server
+	SERVER_IP=$DSS_APPS_SERVER_INSTALL_IP
 	checkServer
 
-	SERVER_NAME=dss-framework-orchestrator-server
-	SERVER_IP=$DSS_FRAMEWORK_ORCHESTRATOR_SERVER_INSTALL_IP
+	SERVER_NAME=dss-server
+	SERVER_IP=$DSS_SERVER_INSTALL_IP
 	checkServer
 
-	SERVER_NAME=dss-apiservice-server
-	SERVER_IP=$DSS_APISERVICE_SERVER_INSTALL_IP
-	checkServer
-
-	SERVER_NAME=dss-datapipe-server
-  SERVER_IP=$DSS_DATAPIPE_SERVER_INSTALL_IP
-  checkServer
-
-	SERVER_NAME=dss-workflow-server
-	SERVER_IP=$DSS_WORKFLOW_SERVER_INSTALL_IP
-	checkServer
-
-	SERVER_NAME=dss-flow-execution-server
-	SERVER_IP=$DSS_FLOW_EXECUTION_SERVER_INSTALL_IP
-	checkServer
 }
-
 
 
 startDssProject

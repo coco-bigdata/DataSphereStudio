@@ -18,8 +18,9 @@ package com.webank.wedatasphere.dss.apiservice.core.util;
 
 import com.webank.wedatasphere.dss.apiservice.core.exception.*;
 import com.webank.wedatasphere.dss.apiservice.core.vo.MessageVo;
-import com.webank.wedatasphere.linkis.common.exception.WarnException;
-import com.webank.wedatasphere.linkis.server.Message;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.linkis.common.exception.WarnException;
+import org.apache.linkis.server.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,58 +36,46 @@ public class ApiUtils {
      * @param tryOperation operate function
      * @param failMessage  message
      */
-    public static Response doAndResponse(TryOperation tryOperation, String method, String failMessage) {
+    public static Message doAndResponse(TryOperation tryOperation, String method, String failMessage) {
         try {
             Message message = tryOperation.operateAndGetMessage();
-            return Message.messageToResponse(setMethod(message, method));
-        } catch (ConstraintViolationException e) {
-            LOG.error("api error, method: " + method, e);
-            return new BeanValidationExceptionMapper().toResponse(e);
+            return setMethod(message, method);
         } catch (WarnException e) {
             LOG.error("api error, method: " + method, e);
-            return Message.messageToResponse(setMethod(Message.warn(e.getMessage()), method));
-        } catch (AssertException e) {
+            return setMethod(Message.warn(e.getMessage()), method);
+        } catch (AssertException | ApiExecuteException | ApiServiceQueryException e) {
             LOG.error("api error, method: " + method, e);
-            return Message.messageToResponse(setMethod(Message.error(e.getMessage()), method));
-
-        } catch (ApiExecuteException e) {
-        LOG.error("api error, method: " + method, e);
-        return Message.messageToResponse(setMethod(Message.error(e.getMessage()), method));
-        }
-        catch (ApiServiceQueryException e) {
+            return setMethod(Message.error(e.getMessage()), method);
+        } catch (Exception e) {
             LOG.error("api error, method: " + method, e);
-            return Message.messageToResponse(setMethod(Message.error(e.getMessage()), method));
-        }
-        catch (Exception e) {
-            LOG.error("api error, method: " + method, e);
-            return Message.messageToResponse(setMethod(Message.error(failMessage, e), method));
+            return Message.error(ExceptionUtils.getRootCauseMessage(e));
         }
     }
 
     /**
      * @param tryOperation operate function
      */
-    public static Response doAndResponse(Operation tryOperation) {
-        Object msg = null;
+    public static Message doAndResponse(Operation tryOperation) {
+        Message msg = null;
         try {
             msg = tryOperation.operateAndGetMessage();
-            return Response.ok(msg).build();
+            return msg;
         } catch (ConstraintViolationException e) {
             LOG.error("api error ", e);
             return new BeanValidationExceptionMapper().toResponse(e);
         } catch (WarnException e) {
             LOG.error("api error ", e);
-            return Response.ok(setMsg("系统异常")).build();
+            return Message.error("系统异常");
         } catch (AssertException e) {
             LOG.error("api error ", e);
-            return Response.ok(setMsg(e.getMessage())).build();
+            return Message.error(e.getMessage());
         }catch (ApiServiceRuntimeException e){
             LOG.error("api error ", e);
-            return Response.ok(setMsg(e.getMessage())).build();
+            return Message.error(e.getMessage());
         }
         catch (Exception e) {
             LOG.error("api error ", e);
-            return Response.ok(setMsg(String.valueOf(e.getCause()))).build();
+            return Message.error(String.valueOf(e.getCause()));
         }
     }
 
@@ -117,6 +106,6 @@ public class ApiUtils {
         /**
          * Operate method
          */
-        Object operateAndGetMessage() throws Exception;
+        Message operateAndGetMessage() throws Exception;
     }
 }

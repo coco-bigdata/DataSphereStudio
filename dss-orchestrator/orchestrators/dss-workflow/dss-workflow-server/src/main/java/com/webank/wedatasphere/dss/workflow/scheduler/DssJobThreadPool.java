@@ -16,14 +16,17 @@
 
 package com.webank.wedatasphere.dss.workflow.scheduler;
 
-import com.webank.wedatasphere.linkis.common.utils.Utils;
+import org.apache.linkis.common.utils.Utils;
 
 import java.util.concurrent.ExecutorService;
+
+import static com.webank.wedatasphere.dss.workflow.constant.DSSWorkFlowConstant.NODE_EXPORT_IMPORT_THREAD_NUM;
 
 public class DssJobThreadPool {
 
     private static ExecutorService executorService = Utils.newFixedThreadPool(1000, "project-publish", false);
     private static ExecutorService executorServiceDeamon = Utils.newFixedThreadPool(1000, "project-publish-deamon", true);
+    public static ExecutorService nodeExportThreadPool = Utils.newFixedThreadPool(NODE_EXPORT_IMPORT_THREAD_NUM.getValue(), "workflowNode-ExportImport-Thread-", false);
 
     public static ExecutorService get() {
         return executorService;

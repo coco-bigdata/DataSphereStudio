@@ -16,282 +16,288 @@
 
 package com.webank.wedatasphere.dss.workflow.restful;
 
-
-import com.webank.wedatasphere.dss.appconn.core.AppConn;
-import com.webank.wedatasphere.dss.appconn.core.ext.OnlySSOAppConn;
 import com.webank.wedatasphere.dss.appconn.manager.AppConnManager;
+import com.webank.wedatasphere.dss.common.entity.node.DSSNode;
 import com.webank.wedatasphere.dss.common.exception.DSSErrorException;
-import com.webank.wedatasphere.dss.common.utils.DSSCommonUtils;
-import com.webank.wedatasphere.dss.standard.app.sso.SSOIntegrationStandard;
+import com.webank.wedatasphere.dss.common.exception.DSSRuntimeException;
+import com.webank.wedatasphere.dss.common.label.EnvDSSLabel;
+import com.webank.wedatasphere.dss.common.utils.DSSExceptionUtils;
+import com.webank.wedatasphere.dss.standard.app.development.utils.DSSJobContentConstant;
 import com.webank.wedatasphere.dss.standard.app.sso.Workspace;
-import com.webank.wedatasphere.dss.standard.app.sso.builder.SSOUrlBuilderOperation;
-import com.webank.wedatasphere.dss.standard.common.exception.AppStandardErrorException;
 import com.webank.wedatasphere.dss.standard.common.exception.operation.ExternalOperationFailedException;
 import com.webank.wedatasphere.dss.standard.sso.utils.SSOHelper;
 import com.webank.wedatasphere.dss.workflow.common.entity.DSSFlow;
+import com.webank.wedatasphere.dss.workflow.common.parser.WorkFlowParser;
 import com.webank.wedatasphere.dss.workflow.cs.DSSCSHelper;
-import com.webank.wedatasphere.dss.workflow.entity.CommonAppConnNode;
-import com.webank.wedatasphere.dss.workflow.entity.ContentLanguage;
-import com.webank.wedatasphere.dss.workflow.entity.NodeGroup;
-import com.webank.wedatasphere.dss.workflow.entity.NodeInfo;
-import com.webank.wedatasphere.dss.workflow.entity.NodeUi;
-import com.webank.wedatasphere.dss.workflow.entity.NodeUiValidate;
+import com.webank.wedatasphere.dss.workflow.entity.*;
+import com.webank.wedatasphere.dss.workflow.entity.request.AppConnNodeUrlRequest;
+import com.webank.wedatasphere.dss.workflow.entity.request.BatchDeleteAppConnNodeRequest;
+import com.webank.wedatasphere.dss.workflow.entity.request.CreateExternalNodeRequest;
+import com.webank.wedatasphere.dss.workflow.entity.request.UpdateExternalNodeRequest;
 import com.webank.wedatasphere.dss.workflow.entity.vo.NodeGroupVO;
 import com.webank.wedatasphere.dss.workflow.entity.vo.NodeInfoVO;
 import com.webank.wedatasphere.dss.workflow.entity.vo.NodeUiVO;
 import com.webank.wedatasphere.dss.workflow.entity.vo.NodeUiValidateVO;
-import com.webank.wedatasphere.dss.workflow.function.DomainSupplier;
-import com.webank.wedatasphere.dss.workflow.function.FunctionInvoker;
-import com.webank.wedatasphere.dss.workflow.function.FunctionPool;
 import com.webank.wedatasphere.dss.workflow.service.DSSFlowService;
 import com.webank.wedatasphere.dss.workflow.service.WorkflowNodeService;
-import com.webank.wedatasphere.linkis.common.conf.Configuration;
-import com.webank.wedatasphere.linkis.cs.common.utils.CSCommonUtils;
-import com.webank.wedatasphere.linkis.server.Message;
-import com.webank.wedatasphere.linkis.server.security.SecurityFilter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.linkis.server.Message;
+import org.apache.linkis.server.security.SecurityFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.*;
 
-@Component
-@Path("/dss/workflow")
-@Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping(path = "/dss/workflow", produces = {"application/json"})
 public class NodeRestfulApi {
     private Logger logger = LoggerFactory.getLogger(this.getClass());
-
     @Autowired
-    private FunctionInvoker functionInvoker;
-
-    @Autowired
-    private DSSFlowService DSSFlowService;
-
+    private DSSFlowService dssFlowService;
     @Autowired
     private WorkflowNodeService workflowNodeService;
+    @Autowired
+    private WorkFlowParser workFlowParser;
 
-    @GET
-    @Path("/listNodeType")
-    public Response listNodeType(@Context HttpServletRequest req) {
-        DomainSupplier<NodeGroup, String> supplier = internationalization(req, NodeGroup::getNameEn, NodeGroup::getName);
-        List<NodeGroupVO> groupVOS = new ArrayList<>();
+    @RequestMapping(value = "/listNodeType",method = RequestMethod.GET)
+    public Message listNodeType(HttpServletRequest req) {
+        Function<NodeGroup, String> supplier = internationalization(req, NodeGroup::getNameEn, NodeGroup::getName);
+        List<NodeGroupVO> groupVos = new ArrayList<>();
         //cache
         List<NodeGroup> groups = workflowNodeService.listNodeGroups();
         for (NodeGroup group : groups) {
             NodeGroupVO nodeGroupVO = new NodeGroupVO();
             BeanUtils.copyProperties(group, nodeGroupVO);
-            nodeGroupVO.setTitle(supplier.get(group));
+            nodeGroupVO.setTitle(supplier.apply(group));
             nodeGroupVO.setChildren(group.getNodes().stream().map(n -> {
                 try {
                     return transfer(n, req);
-                } catch (AppStandardErrorException e) {
-                    e.printStackTrace();
-                    return null;
+                } catch (IOException e) {
+                    logger.error("ListNodeType get AppConn {} icons failed.", n.getAppConnName(), e);
+                    throw new DSSRuntimeException(81200, e.getMessage(), e);
                 }
             }).collect(Collectors.toList()));
-            groupVOS.add(nodeGroupVO);
+            groupVos.add(nodeGroupVO);
         }
-        groupVOS = groupVOS.stream().sorted(NodeGroupVO::compareTo).collect(Collectors.toList());
-        return Message.messageToResponse(Message.ok().data("nodeTypes", groupVOS));
+        groupVos = groupVos.stream().sorted(NodeGroupVO::compareTo).collect(Collectors.toList());
+        return Message.ok().data("nodeTypes", groupVos);
     }
 
-    private <P, T> DomainSupplier<P, T> internationalization(HttpServletRequest req,
-                                                             DomainSupplier<P, T> supplier1,
-                                                             DomainSupplier<P, T> supplier2) {
+    private <P, T> Function<P, T> internationalization(HttpServletRequest req,
+                                                       Function<P, T> supplier1,
+                                                       Function<P, T> supplier2) {
         String language = req.getHeader("Content-language");
-        if (language != null) {language = language.trim();}
-        if (ContentLanguage.en.getName().equals(language))
-        {return supplier1;}
-        else {
+        if (language != null) {
+            language = language.trim();
+        }
+        if (ContentLanguage.en.getName().equals(language)) {
+            return supplier1;
+        } else {
             return supplier2;
         }
     }
 
     private NodeUiValidateVO transfer(NodeUiValidate v, HttpServletRequest req) {
-        DomainSupplier<NodeUiValidate, String> supplier = internationalization(req, NodeUiValidate::getErrorMsgEn,
+        Function<NodeUiValidate, String> supplier = internationalization(req, NodeUiValidate::getErrorMsgEn,
                 NodeUiValidate::getErrorMsg);
         NodeUiValidateVO nodeUiValidateVO = new NodeUiValidateVO();
         BeanUtils.copyProperties(v, nodeUiValidateVO);
-        nodeUiValidateVO.setMessage(supplier.get(v));
+        nodeUiValidateVO.setMessage(supplier.apply(v));
         return nodeUiValidateVO;
     }
 
-    private NodeInfoVO transfer(NodeInfo nodeInfo, HttpServletRequest req) throws AppStandardErrorException {
+    private NodeInfoVO transfer(NodeInfo nodeInfo, HttpServletRequest req) throws IOException {
         NodeInfoVO nodeInfoVO = new NodeInfoVO();
         BeanUtils.copyProperties(nodeInfo, nodeInfoVO);
         nodeInfoVO.setTitle(nodeInfo.getName());
         nodeInfoVO.setType(nodeInfo.getNodeType());
-        nodeInfoVO.setImage(nodeInfo.getIcon());
-        DomainSupplier<NodeUi, String> descriptionSupplier = internationalization(req, NodeUi::getDescriptionEn, NodeUi::getDescription);
-        DomainSupplier<NodeUi, String> lableNameSupplier = internationalization(req, NodeUi::getLableNameEn, NodeUi::getLableName);
+        nodeInfoVO.setImage("");
+        Function<NodeUi, String> descriptionSupplier = internationalization(req, NodeUi::getDescriptionEn, NodeUi::getDescription);
+        Function<NodeUi, String> labelNameSupplier = internationalization(req, NodeUi::getLableNameEn, NodeUi::getLableName);
         ArrayList<NodeUiVO> nodeUiVOS = new ArrayList<>();
+        Set<String> keySet = new HashSet<>(nodeInfo.getNodeUis().size());
         for (NodeUi nodeUi : nodeInfo.getNodeUis()) {
+            //避免重复的ui key，因为第三方组件可能会重复配置。
+            if(keySet.contains(nodeUi.getKey())){
+                continue;
+            }
             NodeUiVO nodeUiVO = new NodeUiVO();
             BeanUtils.copyProperties(nodeUi, nodeUiVO);
-            nodeUiVO.setDesc(descriptionSupplier.get(nodeUi));
-            nodeUiVO.setLableName(lableNameSupplier.get(nodeUi));
+            nodeUiVO.setDesc(descriptionSupplier.apply(nodeUi));
+            nodeUiVO.setLableName(labelNameSupplier.apply(nodeUi));
             nodeUiVO.setNodeUiValidateVOS(nodeUi.getNodeUiValidates().stream().map(v -> transfer(v, req)).sorted(NodeUiValidateVO::compareTo).collect(Collectors.toList()));
             nodeUiVOS.add(nodeUiVO);
+            keySet.add(nodeUi.getKey());
         }
         nodeUiVOS.sort(NodeUiVO::compareTo);
         nodeInfoVO.setNodeUiVOS(nodeUiVOS);
-        //cache
-        AppConn applicationAppConn =  AppConnManager.getAppConnManager().getAppConn(nodeInfo.getAppConnName());
-        if (applicationAppConn instanceof OnlySSOAppConn) {
-            SSOIntegrationStandard standard =((OnlySSOAppConn) applicationAppConn).getOrCreateSSOStandard();
-            if(null !=standard) {
-                SSOUrlBuilderOperation ssoUrlBuilderOperation=standard.getSSOBuilderService().createSSOUrlBuilderOperation();
-                ssoUrlBuilderOperation.setDSSUrl(Configuration.GATEWAY_URL().getValue());
-                //todo add redirect url by labels
-                ssoUrlBuilderOperation.setReqUrl(applicationAppConn.getAppDesc().getAppInstances().get(0).getBaseUrl());
-                String redirectUrl =ssoUrlBuilderOperation.getBuiltUrl();
-                if (redirectUrl != null) {
-                    nodeInfoVO.setJumpUrl(redirectUrl);
-                }
-            }
-        }
         return nodeInfoVO;
     }
 
-    @POST
-    @Path("/createAppConnNode")
-    public Response createExternalNode(@Context HttpServletRequest req, Map<String, Object> json) throws DSSErrorException, IllegalAccessException, ExternalOperationFailedException, InstantiationException {
+
+    @RequestMapping(path ="nodeIcon/{nodeType}", method = RequestMethod.GET)
+    public void getIcon(HttpServletResponse response, @PathVariable("nodeType") String nodeType) throws IOException {
+        byte[] icon = workflowNodeService.getNodeIcon(nodeType);
+        response.setContentType("image/svg+xml");
+        //图表缓存一天，24*60*60=86400秒
+        response.addHeader("Cache-Control", "max-age=86400, no-transform");
+        response.getOutputStream().write(icon);
+    }
+
+    @RequestMapping(value = "/createAppConnNode",method = RequestMethod.POST)
+    public Message createExternalNode(HttpServletRequest req, @RequestBody CreateExternalNodeRequest createExternalNodeRequest) throws DSSErrorException, IllegalAccessException, ExternalOperationFailedException, InstantiationException {
         String userName = SecurityFilter.getLoginUsername(req);
         Workspace workspace = SSOHelper.getWorkspace(req);
-        Long projectID = Long.parseLong(json.get("projectID").toString());
-        String nodeType = json.get("nodeType").toString();
-        Long flowID = Long.parseLong(json.get("flowID").toString());
-        Map<String, Object> params = (Map<String, Object>) json.get("params");
-        logger.info("CreateExternalNode request params is " + params + ",nodeType:" + nodeType);
+        Long projectId = createExternalNodeRequest.getProjectID();
+        String nodeType = createExternalNodeRequest.getNodeType();
+        Long flowId = createExternalNodeRequest.getFlowID();
+        Map<String, Object> params = createExternalNodeRequest.getParams();
+        String nodeId = createExternalNodeRequest.getNodeID();
+
+        logger.info("User {} try to create a {} node for workflow {}, params is {}.", userName, nodeType, flowId, params);
         CommonAppConnNode node = new CommonAppConnNode();
-        node.setProjectId(projectID);
         node.setNodeType(nodeType);
-        node.setFlowId(flowID);
-        node.setProjectId(projectID);
-        //update by peaceWong add nodeID to appConnNode
-        Object nodeID = json.get(CSCommonUtils.NODE_ID);
-        if (null != nodeID) {
-            node.setId(nodeID.toString());
-        }
+        node.setFlowId(flowId);
+        node.setProjectId(projectId);
+        //update by peaceWong add nodeId to appConnNode
+        node.setId(nodeId);
         //update by shanhuang json中解析获取contextID,然后放到请求参数中
-        DSSFlow DSSFlow = DSSFlowService.getLatestVersionFlow(flowID);
-        String flowContent = DSSFlow.getFlowJson();
+        DSSFlow dssFlow = dssFlowService.getFlow(flowId);
+        String flowContent = dssFlow.getFlowJson();
         String ContextIDStr = DSSCSHelper.getContextIDStrByJson(flowContent);
-        params.put(CSCommonUtils.CONTEXT_ID_STR, ContextIDStr);
+        node.setContextId(ContextIDStr);
         //补个flowName的信息..如果这里没查询就直接让前台传了
-        node.setFlowName(DSSFlow.getName());
-        //补充json信息,方便appconn去解析获取响应的值
-        params.put("json", flowContent);
-        String label = ((Map<String, Object>) json.get(DSSCommonUtils.DSS_LABELS_KEY)).get("route").toString();
-        params.put(DSSCommonUtils.DSS_LABELS_KEY, label);
-        params.put("workspace", workspace);
-        functionInvoker.nodeServiceFunction(userName, params, node, FunctionPool.createNode);
-        return Message.messageToResponse(Message.ok().data("result", node.getJobContent()));
-    }
-
-    @POST
-    @Path("/updateAppConnNode")
-    public Response updateExternalNode(@Context HttpServletRequest req, Map<String, Object> json) throws IllegalAccessException, ExternalOperationFailedException, InstantiationException {
-        String userName = SecurityFilter.getLoginUsername(req);
-        Workspace workspace = SSOHelper.getWorkspace(req);
-        Long projectID = Long.parseLong(json.get("projectID").toString());
-        String nodeType = json.get("nodeType").toString();
-        Map<String, Object> params = (Map<String, Object>) json.get("params");
-        logger.info("UpdateExternalNode request params is " + params + ",nodeType:" + nodeType);
-        CommonAppConnNode node = new CommonAppConnNode();
-        node.setProjectId(projectID);
-        node.setNodeType(nodeType);
-        node.setProjectId(projectID);
-        String label = ((Map<String, Object>) json.get(DSSCommonUtils.DSS_LABELS_KEY)).get("route").toString();
-        params.put(DSSCommonUtils.DSS_LABELS_KEY, label);
-        params.put("workspace", workspace);
-        functionInvoker.nodeServiceFunction(userName, params, node, FunctionPool.updateNode);
-        return Message.messageToResponse(Message.ok().data("result", node.getJobContent()));
-    }
-
-    @POST
-    @Path("/deleteAppConnNode")
-    public Response deleteExternalNode(@Context HttpServletRequest req, Map<String, Object> json) throws IllegalAccessException, ExternalOperationFailedException, InstantiationException {
-        String userName = SecurityFilter.getLoginUsername(req);
-        Workspace workspace = SSOHelper.getWorkspace(req);
-        Long projectID = Long.parseLong(json.get("projectID").toString());
-        String nodeType = json.get("nodeType").toString();
-        Map<String, Object> params = (Map<String, Object>) json.get("params");
-        logger.info("DeletepwdExternalNode request params is " + params + ",nodeType:" + nodeType);
-        CommonAppConnNode node = new CommonAppConnNode();
-        node.setProjectId(projectID);
-        node.setNodeType(nodeType);
-        String label = ((Map<String, Object>) json.get(DSSCommonUtils.DSS_LABELS_KEY)).get("route").toString();
-        params.put(DSSCommonUtils.DSS_LABELS_KEY, label);
-        params.put("workspace", workspace);
-        functionInvoker.nodeServiceFunction(userName, params, node, FunctionPool.deleteNode);
-        return Message.messageToResponse(Message.ok().data("result", node.getJobContent()));
-    }
-
-    @POST
-    @Path("/batchDeleteAppConnNode")
-    public Response batchDeleteAppConnNode(@Context HttpServletRequest req, Map<String, Object> reqJson) throws IllegalAccessException, ExternalOperationFailedException, InstantiationException {
-        String userName = SecurityFilter.getLoginUsername(req);
-        Workspace workspace = SSOHelper.getWorkspace(req);
-        List<Map<String,Object>>  jsonList = (List<Map<String, Object>>) reqJson.get("nodes");
-        jsonList.stream().forEach(json ->{
-            Long projectID = Long.parseLong(json.get("projectID").toString());
-            String nodeType = json.get("nodeType").toString();
-            Map<String, Object> params = (Map<String, Object>) json.get("params");
-            logger.info("DeletepwdExternalNode request params is " + params + ",nodeType:" + nodeType);
-            CommonAppConnNode node = new CommonAppConnNode();
-            node.setProjectId(projectID);
-            node.setNodeType(nodeType);
-            String label = ((Map<String, Object>) json.get("labels")).get("route").toString();
-            params.put("labels", label);
-            params.put("workspace", workspace);
-            try {
-                functionInvoker.nodeServiceFunction(userName, params, node, FunctionPool.deleteNode);
-            } catch (IllegalAccessException e) {
-                logger.error("Delete appconn node failde!",e);
-            } catch (ExternalOperationFailedException e) {
-                logger.error("Delete appconn node failde!",e);
-            } catch (InstantiationException e) {
-                logger.error("Delete appconn node failde!",e);
+        node.setFlowName(dssFlow.getName());
+        String label = createExternalNodeRequest.getLabels().getRoute();
+        node.setDssLabels(Collections.singletonList(new EnvDSSLabel(label)));
+        node.setWorkspace(workspace);
+        node.setParams(params);
+        node.setJobContent(params);
+        //补充json信息,方便appConn去解析获取响应的值
+        if(params.containsKey(DSSJobContentConstant.UP_STREAM_KEY)) {
+            List<DSSNode> dssNodes = null;
+            if(params.get(DSSJobContentConstant.UP_STREAM_KEY).equals("empty")) {
+//                dssNodes = workFlowParser.getWorkFlowNodes(flowContent);
+                params.remove(DSSJobContentConstant.UP_STREAM_KEY);
+                logger.info("Create a node that is not bound to an upstream node.");
+            } else {
+                String[] upStreams = ((String) params.get(DSSJobContentConstant.UP_STREAM_KEY)).split(",");
+                dssNodes = workFlowParser.getWorkFlowNodes(flowContent).stream()
+                        .filter(dssNode -> ArrayUtils.contains(upStreams, dssNode.getId())).collect(Collectors.toList());
+                if(dssNodes.isEmpty() && upStreams.length > 0) {
+                    return Message.error("Create node failed! Caused by: the banding up-stream nodes are not exists(绑定的上游节点不存在).");
+                }
+                params.put(DSSJobContentConstant.UP_STREAM_KEY, dssNodes);
             }
+
+        }
+        Map<String, Object> jobContent = workflowNodeService.createNode(userName, node);
+        return Message.ok().data("result", jobContent);
+    }
+
+    @RequestMapping(value = "/updateAppConnNode",method = RequestMethod.POST)
+    public Message updateExternalNode(HttpServletRequest req, @RequestBody UpdateExternalNodeRequest updateExternalNodeRequest) throws IllegalAccessException, ExternalOperationFailedException, InstantiationException {
+        String userName = SecurityFilter.getLoginUsername(req);
+        Workspace workspace = SSOHelper.getWorkspace(req);
+        Long projectId = updateExternalNodeRequest.getProjectID();
+        Long flowId = updateExternalNodeRequest.getFlowID();
+        String nodeType = updateExternalNodeRequest.getNodeType();
+        Map<String, Object> params = updateExternalNodeRequest.getParams();
+        logger.info("User {} try to update ExternalNode request with projectId {}, flowId {}, params is {}, nodeType: {}.",
+                userName, projectId, flowId, params, nodeType);
+        CommonAppConnNode node = new CommonAppConnNode();
+        node.setProjectId(projectId);
+        node.setNodeType(nodeType);
+        node.setFlowId(flowId);
+        String label = updateExternalNodeRequest.getLabels().getRoute();
+        node.setDssLabels(Collections.singletonList(new EnvDSSLabel(label)));
+        node.setWorkspace(workspace);
+        node.setParams(params);
+        node.setJobContent(params);
+        workflowNodeService.updateNode(userName, node);
+        return Message.ok().data("result", node.getJobContent());
+    }
+
+    @RequestMapping(value = "/deleteAppConnNode",method = RequestMethod.POST)
+    public Message deleteExternalNode(HttpServletRequest req, @RequestBody UpdateExternalNodeRequest updateExternalNodeRequest) throws IllegalAccessException, ExternalOperationFailedException, InstantiationException {
+        String userName = SecurityFilter.getLoginUsername(req);
+        Workspace workspace = SSOHelper.getWorkspace(req);
+        Long projectId = updateExternalNodeRequest.getProjectID();
+        Long flowId = updateExternalNodeRequest.getFlowID();
+        String nodeType = updateExternalNodeRequest.getNodeType();
+        Map<String, Object> params = updateExternalNodeRequest.getParams();
+        logger.info("User {} with the workflow {} in project {} try to delete externalNode with params: {}, nodeType: {}.",
+                userName, flowId, projectId, params, nodeType);
+        CommonAppConnNode node = new CommonAppConnNode();
+        String label = updateExternalNodeRequest.getLabels().getRoute();
+        node.setDssLabels(Collections.singletonList(new EnvDSSLabel(label)));
+        node.setWorkspace(workspace);
+        node.setProjectId(projectId);
+        node.setNodeType(nodeType);
+        node.setJobContent(params);
+        node.setFlowId(flowId);
+        node.setName(updateExternalNodeRequest.getName());
+        workflowNodeService.deleteNode(userName, node);
+        return Message.ok().data("result", node.getJobContent());
+    }
+
+    @RequestMapping(value = "/batchDeleteAppConnNode",method = RequestMethod.POST)
+    public Message batchDeleteAppConnNode(HttpServletRequest req, @RequestBody BatchDeleteAppConnNodeRequest batchDeleteAppConnNodeRequest) throws IllegalAccessException, ExternalOperationFailedException, InstantiationException {
+        String userName = SecurityFilter.getLoginUsername(req);
+        Workspace workspace = SSOHelper.getWorkspace(req);
+        List<Map<String,Object>>  jsonList = batchDeleteAppConnNodeRequest.getNodes();
+        jsonList.forEach(json ->{
+            Long projectId = Long.parseLong(json.get("projectID").toString());
+            String nodeType = json.get("nodeType").toString();
+            Long flowId = (Long) json.get("flowID");
+            Map<String, Object> params = (Map<String, Object>) json.get("params");
+            logger.info("User {} try to delete ExternalNode with projectId {}, flowId {}, params is {}, nodeType: {}.",
+                    userName, projectId, flowId, params, nodeType);
+            CommonAppConnNode node = new CommonAppConnNode();
+            String label = ((Map<String, Object>) json.get("labels")).get("route").toString();
+            node.setDssLabels(Collections.singletonList(new EnvDSSLabel(label)));
+            node.setWorkspace(workspace);
+            node.setProjectId(projectId);
+            node.setNodeType(nodeType);
+            node.setJobContent(params);
+            node.setFlowId(flowId);
+            node.setName(json.get("name").toString());
+            workflowNodeService.deleteNode(userName, node);
         });
 
-        return Message.messageToResponse(Message.ok().data("result","success"));
+        return Message.ok("success").data("result","success");
     }
 
-    @POST
-    @Path("/getAppConnNodeUrl")
-    public Response getAppConnNodeUrl(@Context HttpServletRequest req, Map<String, Object> json) throws IllegalAccessException, ExternalOperationFailedException, InstantiationException {
+    @RequestMapping(value = "/getAppConnNodeUrl",method = RequestMethod.POST)
+    public Message getAppConnNodeUrl(HttpServletRequest req, @RequestBody AppConnNodeUrlRequest appConnNodeUrlRequest) {
         String userName = SecurityFilter.getLoginUsername(req);
         Workspace workspace = SSOHelper.getWorkspace(req);
-        Long projectID = Long.parseLong(json.get("projectID").toString());
-        String nodeType = json.get("nodeType").toString();
-        Map<String, Object> params = (Map<String, Object>) json.get("params");
-        logger.info("getAppConnNodeUrl request params is " + params + ",nodeType:" + nodeType);
+        Long projectId = appConnNodeUrlRequest.getProjectID();
+        Long flowId = appConnNodeUrlRequest.getFlowId();
+        String nodeType = appConnNodeUrlRequest.getNodeType();
+        Map<String, Object> params = appConnNodeUrlRequest.getParams();
+        logger.info("User {} with the workflow {} in project {} try to getAppConnNodeUrl with params: {}, nodeType: {}.",
+                userName, flowId, projectId, params, nodeType);
         CommonAppConnNode node = new CommonAppConnNode();
-        node.setProjectId(projectID);
+        node.setWorkspace(workspace);
+        node.setProjectId(projectId);
         node.setNodeType(nodeType);
-        String label = ((Map<String, Object>) json.get(DSSCommonUtils.DSS_LABELS_KEY)).get("route").toString();
-        params.put(DSSCommonUtils.DSS_LABELS_KEY, label);
-        params.put("workspace", workspace);
-        String jumpUrl = workflowNodeService.getNodeJumpUrl(params, node);
-        return Message.messageToResponse(Message.ok().data("jumpUrl", jumpUrl));
+        node.setJobContent(params);
+        node.setFlowId(flowId);
+        String label = appConnNodeUrlRequest.getLabels().getRoute();
+        node.setDssLabels(Collections.singletonList(new EnvDSSLabel(label)));
+        String jumpUrl = workflowNodeService.getNodeJumpUrl(params, node, userName);
+        return Message.ok().data("jumpUrl", jumpUrl);
     }
-
-
 }
 
